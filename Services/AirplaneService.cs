@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using HololensAirplaneViewer.Models;
+using Windows.Data.Json;
 
 namespace HololensAirplaneViewer.Services
 {
@@ -14,11 +15,10 @@ namespace HololensAirplaneViewer.Services
     /// No authentication required. Non-commercial use only.
     ///
     /// API docs: https://openskynetwork.github.io/opensky-api/rest.html
+    /// JSON parsing uses Windows.Data.Json (UWP built-in, no extra NuGet).
     /// </summary>
     public class AirplaneService
     {
-        // Anonymous, no-auth endpoint — returns ALL currently tracked aircraft.
-        // Optionally filtered by bounding box with lamin/lomin/lamax/lomax params.
         private const string StatesUrl = "https://opensky-network.org/api/states/all";
 
         private static readonly HttpClient HttpClient = new HttpClient()
@@ -28,7 +28,7 @@ namespace HololensAirplaneViewer.Services
 
         /// <summary>
         /// Returns up to maxCount aircraft that currently have valid GPS positions,
-        /// sorted by closest altitude to the observer (most visually interesting first).
+        /// sorted airborne first then by highest altitude.
         /// </summary>
         public async Task<List<AirplaneState>> GetLiveStatesAsync(
             double? lamin = null, double? lomin = null,
@@ -37,13 +37,12 @@ namespace HololensAirplaneViewer.Services
         {
             var url = StatesUrl;
 
-            // Optional bounding box filter
             if (lamin.HasValue && lomin.HasValue && lamax.HasValue && lomax.HasValue)
             {
-                url += $"?lamin={lamin.Value.ToString(CultureInfo.InvariantCulture)}"
-                     + $"&lomin={lomin.Value.ToString(CultureInfo.InvariantCulture)}"
-                     + $"&lamax={lamax.Value.ToString(CultureInfo.InvariantCulture)}"
-                     + $"&lomax={lomax.Value.ToString(CultureInfo.InvariantCulture)}";
+                url += string.Format(
+                    CultureInfo.InvariantCulture,
+                    "?lamin={0}&lomin={1}&lamax={2}&lomax={3}",
+                    lamin.Value, lomin.Value, lamax.Value, lomax.Value);
             }
 
             try
@@ -53,87 +52,103 @@ namespace HololensAirplaneViewer.Services
             }
             catch
             {
-                // Network/serialization error — return empty
                 return new List<AirplaneState>();
             }
         }
 
-        private List<AirplaneState> ParseStates(string json, int maxCount)
+        /// <summary>
+        /// Parses the OpenSky "states/all" JSON response.
+        /// Each state vector is a flat JSON array:
+        /// [0]=icao24, [1]=callsign, [2]=origin_country, [5]=longitude,
+        /// [6]=latitude, [7]=baro_altitude, [8]=on_ground, [9]=velocity,
+        /// [10]=true_track, [13]=geo_altitude, [14]=vertical_rate, [15]=sensors
+        /// </summary>
+        private static List<AirplaneState> ParseStates(string json, int maxCount)
         {
-            var all = new List<AirplaneState>();
+            var list = new List<AirplaneState>();
 
             try
             {
-                var doc = System.Text.Json.JsonDocument.Parse(json);
-                if (!doc.RootElement.TryGetProperty("states", out var states))
-                    return all;
+                var root = JsonObject.Parse(json);
+                if (!root.ContainsKey("states"))
+                    return list;
 
-                foreach (var entry in states.EnumerateArray())
+                var states = root["states"].GetArray();
+
+                foreach (var entry in states)
                 {
-                    if (entry.ValueKind != System.Text.Json.JsonValueKind.Array || entry.GetArrayLength() < 18)
+                    if (entry.ValueType != JsonValueType.Array)
                         continue;
 
-                    var arr = entry.EnumerateArray().ToArray();
+                    var arr = entry.GetArray();
+                    if (arr.Count < 18)
+                        continue;
 
-                    var icao24 = arr[0].GetString();
-                    var callsign = arr[1].GetString()?.Trim();
-                    var origin = arr[2].GetString();
-
-                    double? lon = TryPropertyDouble(arr, 5);
-                    double? lat = TryPropertyDouble(arr, 6);
-
+                    // Skip aircraft without position
+                    double? lon = SafeGetDouble(arr, 5);
+                    double? lat = SafeGetDouble(arr, 6);
                     if (!lon.HasValue || !lat.HasValue)
-                        continue; // no GPS fix — skip
+                        continue;
 
-                    var onGround = arr[8].ValueKind != System.Text.Json.JsonValueKind.Null && arr[8].GetBoolean();
-
-                    all.Add(new AirplaneState
+                    var plane = new AirplaneState
                     {
-                        Icao24 = icao24 ?? "?",
-                        Callsign = callsign ?? "",
-                        OriginCountry = origin ?? "",
+                        Icao24 = SafeGetString(arr, 0) ?? "?",
+                        Callsign = SafeGetString(arr, 1)?.Trim() ?? "",
+                        OriginCountry = SafeGetString(arr, 2) ?? "",
                         Longitude = lon,
                         Latitude = lat,
-                        BaroAltitude = TryPropertyFloat(arr, 7),
-                        TrueTrack = TryPropertyFloat(arr, 10),
-                        Velocity = TryPropertyFloat(arr, 9),
-                        GeoAltitude = TryPropertyFloat(arr, 13),
-                        OnGround = onGround,
-                    });
+                        BaroAltitude = SafeGetFloat(arr, 7),
+                        OnGround = SafeGetBool(arr, 8),
+                        Velocity = SafeGetFloat(arr, 9),
+                        TrueTrack = SafeGetFloat(arr, 10),
+                        GeoAltitude = SafeGetFloat(arr, 13),
+                    };
 
-                    if (all.Count >= maxCount * 3)
-                        break; // Enough raw entries; we'll filter and sort below
+                    list.Add(plane);
+
+                    if (list.Count >= maxCount * 3)
+                        break;
                 }
             }
             catch
             {
-                // JSON parse mismatch — return what we have
+                // Gracefully return what we parsed so far
             }
 
-            // Sort by absolute altitude (interesting ones first, de-prioritize ground)
-            // Then take maxCount
-            return all
+            return list
                 .Where(a => a.HasPosition)
-                .OrderBy(a => a.OnGround ? 1 : 0)               // Airborne first
-                .ThenByDescending(a => a.BaroAltitude ?? 0)     // Higher altitude first
+                .OrderBy(a => a.OnGround ? 1 : 0)
+                .ThenByDescending(a => a.BaroAltitude ?? 0)
                 .Take(maxCount)
                 .ToList();
         }
 
-        private double? TryPropertyDouble(System.Text.Json.JsonElement[] arr, int index)
+        private static string SafeGetString(JsonArray arr, int idx)
         {
-            if (index >= arr.Length) return null;
-            var elem = arr[index];
-            if (elem.ValueKind == System.Text.Json.JsonValueKind.Null) return null;
-            try { return elem.GetDouble(); } catch { return null; }
+            if (idx >= arr.Count) return null;
+            var v = arr[idx];
+            return v.ValueType == JsonValueType.Null ? null : v.GetString();
         }
 
-        private float? TryPropertyFloat(System.Text.Json.JsonElement[] arr, int index)
+        private static double? SafeGetDouble(JsonArray arr, int idx)
         {
-            if (index >= arr.Length) return null;
-            var elem = arr[index];
-            if (elem.ValueKind == System.Text.Json.JsonValueKind.Null) return null;
-            try { return (float)elem.GetDouble(); } catch { return null; }
+            if (idx >= arr.Count) return null;
+            var v = arr[idx];
+            if (v.ValueType == JsonValueType.Null) return null;
+            try { return v.GetNumber(); } catch { return null; }
+        }
+
+        private static float? SafeGetFloat(JsonArray arr, int idx)
+        {
+            var d = SafeGetDouble(arr, idx);
+            return d.HasValue ? (float)d.Value : (float?)null;
+        }
+
+        private static bool SafeGetBool(JsonArray arr, int idx)
+        {
+            if (idx >= arr.Count) return false;
+            var v = arr[idx];
+            return v.ValueType != JsonValueType.Null && v.GetBoolean();
         }
     }
 }
