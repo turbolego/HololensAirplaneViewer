@@ -71,9 +71,17 @@ jobs:
       - name: Create build signing certificate
         shell: powershell
         run: |
-          $cert = New-SelfSignedCertificate `\n            -Type Custom `\n            -Subject "CN=BB1A7F2A-A87C-44C8-8C14-84C6486E7E75" `\n            -KeyUsage DigitalSignature `\n            -FriendlyName "HololensAirplaneViewer" `\n            -CertStoreLocation "Cert:\CurrentUser\My" `\n            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3","2.5.29.19={text}")
+          $cert = New-SelfSignedCertificate `
+            -Type Custom `
+            -Subject "CN=BB1A7F2A-A87C-44C8-8C14-84C6486E7E75" `
+            -KeyUsage DigitalSignature `
+            -FriendlyName "HololensAirplaneViewer" `
+            -CertStoreLocation "Cert:\CurrentUser\My" `
+            -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3","2.5.29.19={text}")
           $pwd = ConvertTo-SecureString -String "ci" -Force -AsPlainText
-          Export-PfxCertificate -Cert $cert `\n            -FilePath "${{ github.workspace }}\HololensAirplaneViewer_TemporaryKey.pfx" `\n            -Password $pwd
+          Export-PfxCertificate -Cert $cert `
+            -FilePath "${{ github.workspace }}\HololensAirplaneViewer_TemporaryKey.pfx" `
+            -Password $pwd
 
       # ── Build Release .appxupload (Store-compatible) ──────────────
       # UapAppxPackageBuildMode=StoreUpload + /t:Publish produces a
@@ -101,10 +109,15 @@ jobs:
       - name: Run Windows App Certification Kit
         shell: powershell
         run: |
-          $package = Get-ChildItem -Path "${{ github.workspace }}\AppPackages" `\n            -Recurse -Filter "*.appxupload" | Select-Object -First 1
+          $package = Get-ChildItem -Path "${{ github.workspace }}\AppPackages" `
+            -Recurse -Filter "*.appxupload" | Select-Object -First 1
           if (-not $package) { throw "No .appxupload found in AppPackages/" }
           Write-Host "Testing: $($package.FullName)"
-          & "C:\Program Files (x86)\Windows Kits\10\App Certification Kit\appcert.exe" `\n            test -AppType Universal `\n            -AppxPackagePath "$($package.FullName)" `\n            -ReportOutputPath "${{ github.workspace }}\WackReport.xml" `\n            -DigestPath "${{ github.workspace }}\WackDigest.xml"
+          & "C:\Program Files (x86)\Windows Kits\10\App Certification Kit\appcert.exe" `
+            test -AppType Universal `
+            -AppxPackagePath "$($package.FullName)" `
+            -ReportOutputPath "${{ github.workspace }}\WackReport.xml" `
+            -DigestPath "${{ github.workspace }}\WackDigest.xml"
           Write-Host "WACK exit code: $LASTEXITCODE"
 
       - name: Upload WACK report
@@ -150,7 +163,11 @@ jobs:
           CLIENT_ID: ${{ secrets.AZURE_AD_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.AZURE_AD_CLIENT_SECRET }}
         run: |
-          msstore reconfigure `\n            --tenantId "$env:TENANT_ID" `\n            --sellerId "$env:SELLER_ID" `\n            --clientId "$env:CLIENT_ID" `\n            --clientSecret "$env:CLIENT_SECRET"
+          msstore reconfigure `
+            --tenantId "$env:TENANT_ID" `
+            --sellerId "$env:SELLER_ID" `
+            --clientId "$env:CLIENT_ID" `
+            --clientSecret "$env:CLIENT_SECRET"
 
       - name: Publish app package to Microsoft Store
         if: >
@@ -164,12 +181,14 @@ jobs:
           $appName = $identity.Name
           Write-Host "Publishing app: $appName (Version: $($identity.Version))"
           # Find the .appxupload
-          $upload = Get-ChildItem -Path "${{ github.workspace }}\AppPackages" `\n            -Recurse -Filter "*.appxupload" | Select-Object -First 1
+          $upload = Get-ChildItem -Path "${{ github.workspace }}\AppPackages" `
+            -Recurse -Filter "*.appxupload" | Select-Object -First 1
           if ($upload) {
             msstore publish $upload.FullName -id $appName
           } else {
             # Fall back: submit the AppPackages folder for UWP submissions
             msstore submission create -id $appName
-            msstore submission upload -id $appName `\n              -package "${{ github.workspace }}\AppPackages\\**\\*.appx"
+            msstore submission upload -id $appName `
+              -package "${{ github.workspace }}\AppPackages\**\*.appx"
             msstore submission publish -id $appName
           }
