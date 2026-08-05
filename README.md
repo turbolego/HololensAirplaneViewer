@@ -10,6 +10,9 @@
 Real-time airplane tracker for **Microsoft HoloLens 1** built on the UWP platform.
 Airplanes appear as holographic markers in the dome **above you**, positioned from live ADS-B data fetched from the [OpenSky Network](https://opensky-network.org/). A debug panel below the GPS location shows each aircraft's ICAO, callsign, altitude, and relative position.
 
+<img width="1408" height="792" alt="20260805_210112_HoloLens" src="https://github.com/user-attachments/assets/76901ffe-6f87-40e6-901e-94453c87e4f7" />
+
+
 ---
 ## What You Will See
 Put on the HoloLens and launch the app:
