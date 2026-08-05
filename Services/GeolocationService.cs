@@ -6,7 +6,7 @@ namespace HololensAirplaneViewer.Services
 {
     /// <summary>
     /// Service for obtaining HoloLens device GPS location.
-    /// Used to calculate satellite positions relative to the user.
+    /// Used to calculate aircraft positions relative to the user.
     /// </summary>
     public class GeolocationService
     {

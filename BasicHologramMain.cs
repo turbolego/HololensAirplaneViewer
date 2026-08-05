@@ -30,13 +30,13 @@ namespace HololensAirplaneViewer
     /// <summary>
     /// Updates, renders, and presents holographic content using Direct3D.
     /// </summary>
-    internal class HolographicTemplateAppMain : IDisposable
+    internal class AirplaneViewerMain : IDisposable
     {
 
 #if DRAW_SAMPLE_CONTENT
-        // Renders satellites as holograms positioned in world space
+        // Renders airplaneRenderers as holograms positioned in world space
         // relative to user's GPS location and Earth orbit.
-        private SatelliteRenderer satelliteRenderer;
+        private AirplaneRenderer airplaneRendererRenderer;
 
         private SpatialInputHandler spatialInputHandler;
 #endif
@@ -87,7 +87,7 @@ namespace HololensAirplaneViewer
         /// Loads and initializes application assets when the application is loaded.
         /// </summary>
         /// <param name="deviceResources"></param>
-        public HolographicTemplateAppMain(DeviceResources deviceResources)
+        public AirplaneViewerMain(DeviceResources deviceResources)
         {
             this.deviceResources = deviceResources;
 
@@ -119,7 +119,7 @@ namespace HololensAirplaneViewer
 
 #if DRAW_SAMPLE_CONTENT
             // Initialize the sample hologram.
-            satelliteRenderer = new SatelliteRenderer(deviceResources);
+            airplaneRendererRenderer = new AirplaneRenderer(deviceResources);
 
             spatialInputHandler = new SpatialInputHandler();
 #endif
@@ -166,10 +166,10 @@ namespace HololensAirplaneViewer
         public void Dispose()
         {
 #if DRAW_SAMPLE_CONTENT
-            if (satelliteRenderer != null)
+            if (airplaneRendererRenderer != null)
             {
-                satelliteRenderer.Dispose();
-                satelliteRenderer = null;
+                airplaneRendererRenderer.Dispose();
+                airplaneRendererRenderer = null;
             }
 #endif
         }
@@ -220,7 +220,7 @@ namespace HololensAirplaneViewer
                 SpatialPointerPose headPose = SpatialPointerPose.TryGetAtTimestamp(
                     stationaryReferenceFrame.CoordinateSystem, prediction.Timestamp);
 
-                satelliteRenderer.PositionHologram(headPose);
+                airplaneRendererRenderer.PositionHologram(headPose);
             }
 #endif
 
@@ -235,7 +235,7 @@ namespace HololensAirplaneViewer
                 //
 
 #if DRAW_SAMPLE_CONTENT
-                satelliteRenderer.Update(timer);
+                airplaneRendererRenderer.Update(timer);
 #endif
             });
 
@@ -261,7 +261,7 @@ namespace HololensAirplaneViewer
                     {
                         renderingParameters.SetFocusPoint(
                             stationaryReferenceFrame.CoordinateSystem,
-                            satelliteRenderer.Position
+                            airplaneRendererRenderer.Position
                             );
                     }
 #endif
@@ -371,7 +371,7 @@ namespace HololensAirplaneViewer
                         if (cameraActive)
                         {
                             // Draw the sample hologram.
-                            satelliteRenderer.Render();
+                            airplaneRendererRenderer.Render();
 
                             if (canCommitDirect3D11DepthBuffer)
                             {
@@ -434,7 +434,7 @@ namespace HololensAirplaneViewer
         {
 
 #if DRAW_SAMPLE_CONTENT
-            satelliteRenderer.ReleaseDeviceDependentResources();
+            airplaneRendererRenderer.ReleaseDeviceDependentResources();
 #endif
 
         }
@@ -445,7 +445,7 @@ namespace HololensAirplaneViewer
         public void OnDeviceRestored(Object sender, EventArgs e)
         {
 #if DRAW_SAMPLE_CONTENT
-            satelliteRenderer.CreateDeviceDependentResourcesAsync();
+            airplaneRendererRenderer.CreateDeviceDependentResourcesAsync();
 #endif
         }
 
