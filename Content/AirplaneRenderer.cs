@@ -40,7 +40,7 @@ namespace HololensAirplaneViewer.Content
 
         private bool fetchInProgress;
         private DateTime lastFetchUtc = DateTime.MinValue;
-        private volatile List<Satellite> satellites = new List<Satellite>();
+        private volatile List<AirplaneState> airplanes = new List<AirplaneState>();
 
         private Vector3 currentHeadPosition = Vector3.Zero;
         private Vector3 worldCenter = Vector3.Zero;
@@ -48,13 +48,19 @@ namespace HololensAirplaneViewer.Content
         private float ceilingY;
 
         private string gpsDebug = "GPS: --";
+        private string apiDebug = "OpenSky: --";
+        private string lastError = "";
 
-        private const int MaxSatellitesRendered = 10;
-        private const float SatCubeScale = 0.25f;
+        // Observer's GPS fix (used for lat/lon → local dome mapping)
+        private double currentLatitude = 59.91;  // ≈ Oslo fallback
+        private double currentLongitude = 10.75;
+
+        private const int MaxAirplanesRendered = 15;
+        private const float MarkerScale = 0.25f;
         private const float DomeRadiusMeters = 2.5f;
         private const float CeilingOffset = 1.4f;
         private const float CeilingClearance = 0.3f;
-        private const float SatelliteLabelSize = 0.10f;
+        private const float AirplaneLabelSize = 0.10f;
         private const float DebugTextSize = 0.08f;
         private const float DebugLineSpacing = 0.08f;
 
@@ -62,8 +68,6 @@ namespace HololensAirplaneViewer.Content
         private const int AtlasRows = 8;
         private const int GlyphCellW = 16;
         private const int GlyphCellH = 24;
-
-        private readonly Dictionary<int, TrackState> tracks = new Dictionary<int, TrackState>();
 
         private static readonly Dictionary<char, ushort> GlyphBits = new Dictionary<char, ushort>
         {
@@ -83,10 +87,10 @@ namespace HololensAirplaneViewer.Content
             {':', 0b_000_010_000_010_000}, {',', 0b_000_000_000_010_100}, {' ', 0}
         };
 
-        public SatelliteRenderer(DeviceResources deviceResources)
+        public AirplaneRenderer(DeviceResources deviceResources)
         {
             this.deviceResources = deviceResources;
-            this.orbitService = new OrbitService();
+            this.airplaneService = new AirplaneService();
             this.geolocationService = new GeolocationService();
             CreateDeviceDependentResourcesAsync();
         }
@@ -109,33 +113,38 @@ namespace HololensAirplaneViewer.Content
 
         public async void Update(StepTimer timer)
         {
-            if (!fetchInProgress && (DateTime.UtcNow - lastFetchUtc).TotalSeconds >= 1.0)
+            // Fetch fresh aircraft state vectors every 10 seconds (OpenSky anonymous tier)
+            if (!fetchInProgress && (DateTime.UtcNow - lastFetchUtc).TotalSeconds >= 10.0)
             {
                 fetchInProgress = true;
                 try
                 {
+                    double lat = 59.91, lon = 10.75; // fallback ≈ Oslo
                     var gps = await geolocationService.GetCurrentLocationAsync();
                     if (gps != null)
                     {
-                        var lat = gps.Coordinate.Point.Position.Latitude;
-                        var lon = gps.Coordinate.Point.Position.Longitude;
-                        var altKm = gps.Coordinate.Point.Position.Altitude / 1000.0;
-                        orbitService.SetObserverLocation(lat, lon, altKm);
+                        lat = gps.Coordinate.Point.Position.Latitude;
+                        lon = gps.Coordinate.Point.Position.Longitude;
+                        currentLatitude = lat;
+                        currentLongitude = lon;
                         gpsDebug = string.Format(CultureInfo.InvariantCulture, "GPS {0:F3},{1:F3}", lat, lon);
                     }
 
-                    var live = await orbitService.GetLiveSatellitesAsync();
-                    var closest = live
-                        .OrderBy(s => s.RangeKm)
-                        .Take(MaxSatellitesRendered)
-                        .ToList();
+                    // Fetch aircraft within a ±3° box around the user's GPS fix
+                    var live = await airplaneService.GetLiveStatesAsync(
+                        lamin: lat - 3.0, lamax: lat + 3.0,
+                        lomin: lon - 3.0, lomax: lon + 3.0,
+                        maxCount: MaxAirplanesRendered);
 
-                    satellites = closest;
+                    airplanes = live;
+                    apiDebug = string.Format(CultureInfo.InvariantCulture, "OpenSky:{0} ACFT", live.Count);
+                    lastError = "";
 
                     lastFetchUtc = DateTime.UtcNow;
                 }
-                catch
+                catch (Exception ex)
                 {
+                    lastError = ex.Message;
                 }
                 finally
                 {
@@ -151,13 +160,13 @@ namespace HololensAirplaneViewer.Content
                 return;
             }
 
-            RenderSatellites();
+            RenderAirplanes();
             RenderText();
         }
 
         public Vector3 Position => worldCenter;
 
-        private void RenderSatellites()
+        private void RenderAirplanes()
         {
             var context = deviceResources.D3DDeviceContext;
 
@@ -174,10 +183,10 @@ namespace HololensAirplaneViewer.Content
             }
             context.PixelShader.SetShader(pixelShader, null, 0);
 
-            foreach (var sat in satellites)
+            foreach (var plane in airplanes)
             {
-                var pos = ComputeSatellitePosition(sat);
-                DrawCubeAt(pos, SatCubeScale);
+                var pos = ComputeAirplanePosition(plane);
+                DrawCubeAt(pos, MarkerScale);
             }
         }
 
@@ -200,45 +209,39 @@ namespace HololensAirplaneViewer.Content
             context.PixelShader.SetShaderResource(0, glyphAtlasSrv);
             context.PixelShader.SetSampler(0, textSampler);
 
-            foreach (var sat in satellites)
+            foreach (var plane in airplanes)
             {
-                var pos = ComputeSatellitePosition(sat) + new Vector3(0f, 0.08f, 0f);
-                DrawTextBillboard(ShortName(sat.Name), pos, SatelliteLabelSize);
+                var pos = ComputeAirplanePosition(plane) + new Vector3(0f, 0.08f, 0f);
+                DrawTextBillboard(plane.DisplayName, pos, AirplaneLabelSize);
             }
 
             Vector3 panelCenter = worldCenter + new Vector3(0.0f, 0.15f, -1.15f);
             var lines = new List<string>();
 
             lines.Add(gpsDebug);
+            lines.Add(apiDebug);
             lines.Add(string.Format(
                 CultureInfo.InvariantCulture,
-                "TLE:{0} PROP:{1} VIS:{2} T:{3:ss}",
-                orbitService.TleCount,
-                orbitService.PropagatedCount,
-                orbitService.AboveHorizon,
-                DateTime.UtcNow));
-
-            // ECI sanity-check row
-            if (!string.IsNullOrEmpty(orbitService.EciDebug))
-                lines.Add(orbitService.EciDebug.Length > 28
-                    ? orbitService.EciDebug.Substring(0, 28)
-                    : orbitService.EciDebug);
+                "T:{0:ss} ACFT:{1}",
+                DateTime.UtcNow,
+                airplanes.Count));
 
             // Error row
-            if (!string.IsNullOrEmpty(orbitService.LastError))
-                lines.Add(orbitService.LastError.Length > 28
-                    ? orbitService.LastError.Substring(0, 28)
-                    : orbitService.LastError);
+            if (!string.IsNullOrEmpty(lastError))
+                lines.Add(lastError.Length > 28
+                    ? lastError.Substring(0, 28)
+                    : lastError);
 
-            foreach (var sat in satellites)
+            foreach (var plane in airplanes)
             {
-                var pos  = ComputeSatellitePosition(sat);
+                var pos  = ComputeAirplanePosition(plane);
                 float relX = pos.X - worldCenter.X;
                 float relZ = pos.Z - worldCenter.Z;
+                float altFt = (plane.BaroAltitude ?? 0f) * 3.28084f;
                 lines.Add(string.Format(
                     CultureInfo.InvariantCulture,
-                    "{0} A{1:F0} E{2:F0} X{3:F1} Z{4:F1}",
-                    ShortName(sat.Name), sat.Azimuth, sat.Elevation, relX, relZ));
+                    "{0} A{1:F0}FT X{2:F1} Z{3:F1}",
+                    plane.DisplayName, altFt, relX, relZ));
             }
 
             float startY = panelCenter.Y + 0.35f;
@@ -251,25 +254,42 @@ namespace HololensAirplaneViewer.Content
             context.PixelShader.SetShaderResource(0, null);
         }
 
-        private Vector3 ComputeSatellitePosition(Satellite sat)
+        /// <summary>
+        /// Converts a live aircraft's WGS-84 lat/lon/alt into local HoloLens
+        /// world coordinates, mapped into the dome above the user.
+        /// Uses a planar approximation of the Earth around the GPS fix:
+        ///   1° latitude  ≈ 111,320 m
+        ///   1° longitude ≈ 111,320 m × cos(lat)
+        /// </summary>
+        private Vector3 ComputeAirplanePosition(AirplaneState plane)
         {
-            double az = sat.Azimuth * Math.PI / 180.0;
-            double el = sat.Elevation * Math.PI / 180.0;
+            if (!plane.HasPosition)
+            {
+                return new Vector3(worldCenter.X, worldCenter.Y + 1.5f, worldCenter.Z);
+            }
 
-            // Use azimuth directly for now (no smoothing) to see spread
-            float useAz = (float)az;
+            // Distance from the user's GPS fix (meters)
+            double dLat = plane.Latitude.Value - currentLatitude;
+            double dLon = plane.Longitude.Value - currentLongitude;
+            const double OneDegMeters = 111320.0;
 
-            // Calculate horizontal distance - use larger multiplier for better spread
-            // Even low elevation satellites should be well separated by azimuth
-            float horizontal = DomeRadiusMeters * (float)Math.Max(0.5, Math.Cos(el));
-            float x = (float)Math.Sin(useAz) * horizontal;
-            float z = (float)(-Math.Cos(useAz)) * horizontal;
+            double xMeters = dLon * OneDegMeters * Math.Cos(currentLatitude * Math.PI / 180.0);
+            double zMeters = dLat * OneDegMeters;
 
-            // Keep satellites near ceiling, with vertical spread based on elevation
-            float y = (ceilingY - CeilingClearance) + (float)Math.Sin(el) * 0.4f;
+            // Altitude meters → display units (scale down for the dome)
+            double altM = plane.GeoAltitude ?? plane.BaroAltitude ?? 0.0;
+            double altDisplay = Math.Min(altM * 0.002, 1.5);
 
-            // Only above local horizon and above floor relative to center.
-            if (sat.Elevation <= 0.0 || y < worldCenter.Y - 0.1f)
+            // Clamp horizontal offset into the dome radius
+            double horiz = Math.Min(Math.Sqrt(xMeters * xMeters + zMeters * zMeters), DomeRadiusMeters - 0.2);
+            double angle = Math.Atan2(zMeters, xMeters);
+
+            float x = (float)(horiz * Math.Cos(angle));
+            float z = (float)(horiz * Math.Sin(angle));
+            float y = (ceilingY - CeilingClearance) + (float)altDisplay;
+
+            // Keep markers above the floor relative to the user
+            if (y < worldCenter.Y - 0.1f)
             {
                 y = worldCenter.Y - 0.1f;
             }
@@ -570,14 +590,6 @@ namespace HololensAirplaneViewer.Content
             return a;
         }
 
-        private static string ShortName(string name)
-        {
-            if (string.IsNullOrWhiteSpace(name)) return "UNK";
-            var s = name.Trim().ToUpperInvariant();
-            if (s.Length > 8) s = s.Substring(0, 8);
-            return s;
-        }
-
         private static string Sanitize(string text)
         {
             var chars = new List<char>();
@@ -609,14 +621,6 @@ namespace HololensAirplaneViewer.Content
                 Pos = p;
                 Uv = uv;
             }
-        }
-
-        private struct TrackState
-        {
-            public bool HasPrev;
-            public float LastAz;
-            public float DisplayAz;
-            public DateTime LastUpdateUtc;
         }
 
         private struct ModelConstantBuffer

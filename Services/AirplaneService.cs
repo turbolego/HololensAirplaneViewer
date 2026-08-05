@@ -5,7 +5,6 @@ using System.Linq;
 using System.Net.Http;
 using System.Threading.Tasks;
 using HololensAirplaneViewer.Models;
-using System.Runtime.Serialization.Json;
 
 namespace HololensAirplaneViewer.Services
 {
@@ -49,7 +48,7 @@ namespace HololensAirplaneViewer.Services
 
             try
             {
-                var raw = await _http.GetStringAsync(url);
+                var raw = await HttpClient.GetStringAsync(url);
                 return ParseStates(raw, maxCount);
             }
             catch
@@ -116,7 +115,7 @@ namespace HololensAirplaneViewer.Services
             return all
                 .Where(a => a.HasPosition)
                 .OrderBy(a => a.OnGround ? 1 : 0)               // Airborne first
-                .ThenByDescending(a => a.BarHeight ?? 0)        // Higher altitude first
+                .ThenByDescending(a => a.BaroAltitude ?? 0)     // Higher altitude first
                 .Take(maxCount)
                 .ToList();
         }

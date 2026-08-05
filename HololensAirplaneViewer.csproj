@@ -75,13 +75,10 @@
     <Compile Include="Common\StepTimer.cs" />
     <Compile Include="Content\ShaderStructures.cs" />
     <Compile Include="Content\SpatialInputHandler.cs" />
-    <Compile Include="Content\SatelliteRenderer.cs" />
-    <Compile Include="Models\Satellite.cs" />
-    <Compile Include="Models\TleRecord.cs" />
+    <Compile Include="Content\AirplaneRenderer.cs" />
+    <Compile Include="Models\AirplaneState.cs" />
     <Compile Include="Services\GeolocationService.cs" />
-    <Compile Include="Services\TleService.cs" />
-    <Compile Include="Services\Sgp4Service.cs" />
-    <Compile Include="Services\OrbitService.cs" />
+    <Compile Include="Services\AirplaneService.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
 
