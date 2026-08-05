@@ -110,7 +110,7 @@ jobs:
       # the Windows.Holographic-only app cannot launch on the desktop CI VM.
       # This is expected and does not block Store submission — Microsoft
       # re-runs their own certification in a proper HoloLens environment.
-      # We treat exit codes 0 and -5 as "acceptable" to keep the workflow green.
+      # We treat -5 as acceptable (not $LASTEXITCODE is PS 5.1 compatible).
       - name: Run Windows App Certification Kit
         shell: powershell
         run: |
@@ -124,7 +124,9 @@ jobs:
             -ReportOutputPath "${{ github.workspace }}\WackReport.xml"
           Write-Host "WACK exit code: $LASTEXITCODE"
           # Exit code -5 = app could not be launched (expected on non-HoloLens runners)
-          if ($LASTEXITCODE -notin @(0, -5)) { exit $LASTEXITCODE }
+          # Use PowerShell 5.1-compatible array check instead of -notin
+          $accepted = @(0, -5)
+          if ($accepted -notcontains $LASTEXITCODE) { exit $LASTEXITCODE }
 
       - name: Upload WACK report
         if: always()
