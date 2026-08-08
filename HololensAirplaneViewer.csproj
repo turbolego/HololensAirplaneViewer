@@ -79,8 +79,9 @@
     <Compile Include="Models\AirplaneState.cs" />
     <Compile Include="Services\AirplaneMath.cs" />
     <Compile Include="Services\AirplaneSelection.cs" />
-    <Compile Include="Services\GeolocationService.cs" />
     <Compile Include="Services\AirplaneService.cs" />
+    <Compile Include="Services\CompassService.cs" />
+    <Compile Include="Services\GeolocationService.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
 

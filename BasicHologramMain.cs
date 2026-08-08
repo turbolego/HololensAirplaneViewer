@@ -17,6 +17,7 @@ using Windows.Perception.Spatial;
 using Windows.UI.Input.Spatial;
 
 using HololensAirplaneViewer.Common;
+using HololensAirplaneViewer.Services;
 using System.Threading.Tasks;
 using Windows.Foundation;
 using System.Collections.Generic;
@@ -39,6 +40,7 @@ namespace HololensAirplaneViewer
         private AirplaneRenderer airplaneRenderer;
 
         private SpatialInputHandler spatialInputHandler;
+        private CompassService compassService;
 #endif
 
         // Cached reference to device resources.
@@ -122,6 +124,10 @@ namespace HololensAirplaneViewer
             airplaneRenderer = new AirplaneRenderer(deviceResources);
 
             spatialInputHandler = new SpatialInputHandler();
+
+            // Initialize compass for heading-based dome rotation
+            compassService = new CompassService();
+            compassService.Initialize();
 #endif
 
             if (canGetDefaultHolographicDisplay)
@@ -172,6 +178,11 @@ namespace HololensAirplaneViewer
                 airplaneRenderer = null;
             }
 #endif
+            if (compassService != null)
+            {
+                compassService.Dispose();
+                compassService = null;
+            }
         }
 
         /// <summary>
@@ -220,7 +231,11 @@ namespace HololensAirplaneViewer
                 SpatialPointerPose headPose = SpatialPointerPose.TryGetAtTimestamp(
                     stationaryReferenceFrame.CoordinateSystem, prediction.Timestamp);
 
+                // Read the latest compass heading (updated on background thread by CompassService)
+                float compassHeading = compassService?.CurrentHeadingDegrees ?? 0f;
+
                 airplaneRenderer.PositionHologram(headPose);
+                airplaneRenderer.SetCompassHeading(compassHeading);
             }
 #endif
 

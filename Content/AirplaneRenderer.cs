@@ -7,6 +7,7 @@ using HololensAirplaneViewer.Common;
 using HololensAirplaneViewer.Models;
 using HololensAirplaneViewer.Services;
 using Windows.UI.Input.Spatial;
+using Windows.Devices.Sensors;
 
 namespace HololensAirplaneViewer.Content
 {
@@ -15,6 +16,7 @@ namespace HololensAirplaneViewer.Content
         private readonly DeviceResources deviceResources;
         private readonly AirplaneService airplaneService;
         private readonly GeolocationService geolocationService;
+        private readonly CompassService compassService;
 
         private SharpDX.Direct3D11.InputLayout inputLayout;
         private SharpDX.Direct3D11.Buffer vertexBuffer;
@@ -46,6 +48,12 @@ namespace HololensAirplaneViewer.Content
         private Vector3 worldCenter = Vector3.Zero;
         private bool worldCenterLocked;
         private float ceilingY;
+
+        /// <summary>
+        /// Latest compass heading in degrees (0=North, 90=East, 180=South, 270=West).
+        /// Updated on a background thread by CompassService; read on the render thread.
+        /// </summary>
+        private float compassHeadingDegrees;
 
         private string gpsDebug = "GPS: --";
         private string apiDebug = "OpenSky: --";
@@ -93,6 +101,8 @@ namespace HololensAirplaneViewer.Content
             this.deviceResources = deviceResources;
             this.airplaneService = new AirplaneService();
             this.geolocationService = new GeolocationService();
+            this.compassService = new CompassService();
+            this.compassService.Initialize();
             CreateDeviceDependentResourcesAsync();
         }
 
@@ -180,6 +190,14 @@ namespace HololensAirplaneViewer.Content
 
         public Vector3 Position => worldCenter;
 
+        /// <summary>
+        /// Set by the main loop each frame from the compass service.
+        /// </summary>
+        public void SetCompassHeading(float degrees)
+        {
+            compassHeadingDegrees = degrees;
+        }
+
         private void RenderAirplanes()
         {
             var context = deviceResources.D3DDeviceContext;
@@ -200,7 +218,7 @@ namespace HololensAirplaneViewer.Content
             foreach (var plane in airplanes)
             {
                 var pos = ComputeAirplanePosition(plane);
-                DrawCubeAt(pos, MarkerScale);
+                DrawCubeAt(pos, MarkerScale, compassHeadingDegrees);
             }
         }
 
@@ -226,7 +244,7 @@ namespace HololensAirplaneViewer.Content
             foreach (var plane in airplanes)
             {
                 var pos = ComputeAirplanePosition(plane) + new Vector3(0f, 0.08f, 0f);
-                DrawTextBillboard(plane.DisplayName, pos, AirplaneLabelSize);
+                DrawTextBillboard(plane.DisplayName, pos, AirplaneLabelSize, true, compassHeadingDegrees);
             }
 
             Vector3 panelCenter = worldCenter + new Vector3(0.0f, 0.15f, -1.15f);
@@ -262,7 +280,7 @@ namespace HololensAirplaneViewer.Content
             for (int i = 0; i < lines.Count && i < 11; i++)
             {
                 Vector3 p = new Vector3(panelCenter.X - 0.7f, startY - i * DebugLineSpacing, panelCenter.Z);
-                DrawTextBillboard(Sanitize(lines[i]), p, DebugTextSize, false);
+                DrawTextBillboard(Sanitize(lines[i]), p, DebugTextSize, false, compassHeadingDegrees);
             }
 
             context.PixelShader.SetShaderResource(0, null);
@@ -290,15 +308,21 @@ namespace HololensAirplaneViewer.Content
                 ceilingY);
         }
 
-        private void DrawCubeAt(Vector3 worldPos, float scale)
+        private void DrawCubeAt(Vector3 worldPos, float scale, float compassHeadingDegrees)
         {
-            Matrix4x4 m = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateTranslation(worldPos);
+            // Rotate the world position around Y axis by compass heading so the
+            // airplane dome tracks the user's physical orientation.
+            float headingRad = (float)(compassHeadingDegrees * Math.PI / 180.0);
+            Matrix4x4 compassRot = Matrix4x4.CreateRotationY(headingRad);
+
+            Vector3 rotatedPos = Vector3.Transform(worldPos, compassRot);
+            Matrix4x4 m = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateTranslation(rotatedPos);
             modelConstantBufferData.model = Matrix4x4.Transpose(m);
             deviceResources.D3DDeviceContext.UpdateSubresource(ref modelConstantBufferData, modelConstantBuffer);
             deviceResources.D3DDeviceContext.DrawIndexedInstanced(indexCount, 2, 0, 0, 0);
         }
 
-        private void DrawTextBillboard(string text, Vector3 origin, float size, bool faceCamera = true)
+        private void DrawTextBillboard(string text, Vector3 origin, float size, bool faceCamera, float compassHeadingDegrees)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -315,9 +339,15 @@ namespace HololensAirplaneViewer.Content
                 UpdateTextQuadVertices(uv);
 
                 Vector3 glyphPos = origin + new Vector3(start + i * advance, 0, 0);
+
+                // Rotate the glyph position by compass heading so labels track the dome
+                float headingRad = (float)(compassHeadingDegrees * Math.PI / 180.0);
+                Matrix4x4 compassRot = Matrix4x4.CreateRotationY(headingRad);
+                Vector3 rotatedPos = Vector3.Transform(glyphPos, compassRot);
+
                 Matrix4x4 m = faceCamera
-                    ? BuildBillboard(glyphPos, size * 0.55f, size * 0.85f)
-                    : Matrix4x4.CreateScale(size * 0.55f, size * 0.85f, 1.0f) * Matrix4x4.CreateTranslation(glyphPos);
+                    ? BuildBillboard(rotatedPos, size * 0.55f, size * 0.85f)
+                    : Matrix4x4.CreateScale(size * 0.55f, size * 0.85f, 1.0f) * Matrix4x4.CreateTranslation(rotatedPos);
 
                 modelConstantBufferData.model = Matrix4x4.Transpose(m);
                 deviceResources.D3DDeviceContext.UpdateSubresource(ref modelConstantBufferData, modelConstantBuffer);
