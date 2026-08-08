@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <RootNamespace>VerifyAirplanes</RootNamespace>
+  </PropertyGroup>
+
+  <!-- Link the ACTUAL production source files so this verifies real app code. -->
+  <ItemGroup>
+    <Compile Include="../../Services/AirplaneMath.cs" Link="AirplaneMath.cs" />
+    <Compile Include="../../Services/AirplaneSelection.cs" Link="AirplaneSelection.cs" />
+    <Compile Include="../../Models/AirplaneState.cs" Link="AirplaneState.cs" />
+  </ItemGroup>
+
+</Project>
