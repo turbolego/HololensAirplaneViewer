@@ -15,6 +15,11 @@
 #   5. The app must already exist in Partner Center with at least one
 #      submission (even a draft with the correct package info).
 #
+# NOTE: The Store rejects re-submissions of the SAME package version with
+# different content ('packages must be uniquely identified by their full
+# names'). Bump <Identity Version> in Package.appxmanifest before each
+# re-submit.
+#
 # See: https://learn.microsoft.com/windows/apps/publish/msstore-dev-cli/github-actions
 #
 # WARNING: App update operations currently support free products only.
