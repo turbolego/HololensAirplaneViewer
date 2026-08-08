@@ -192,6 +192,11 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
+          # DEBUG: dump the apps list output to see the table format
+          Write-Host "=== DEBUG msstore apps list raw ==="
+          msstore apps list 2>&1 | ForEach-Object { Write-Host "RAW| $_" }
+          Write-Host "=== DEBUG end ==="
+
           # The msstore CLI needs the Partner Center PRODUCT ID (a GUID), NOT
           # the manifest identity name (e.g. 'Turbolego.HololensAirplaneViewer').
           # Resolve it via 'msstore apps list', which prints a table with
