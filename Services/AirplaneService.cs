@@ -59,10 +59,10 @@ namespace HololensAirplaneViewer.Services
         /// <summary>
         /// Parses the OpenSky "states/all" JSON response into raw aircraft states
         /// (no selection/sorting — see <see cref="AirplaneSelection"/>).
-        /// Each state vector is a flat JSON array:
+        /// Each state vector is a flat JSON array of 17 fields:
         /// [0]=icao24, [1]=callsign, [2]=origin_country, [5]=longitude,
         /// [6]=latitude, [7]=baro_altitude, [8]=on_ground, [9]=velocity,
-        /// [10]=true_track, [13]=geo_altitude, [14]=vertical_rate, [15]=sensors
+        /// [10]=true_track, [13]=geo_altitude, [14]=squawk, [15]=spi, [16]=position_source
         /// </summary>
         private static List<AirplaneState> ParseStatesIntoList(string json)
         {
@@ -82,7 +82,7 @@ namespace HololensAirplaneViewer.Services
                         continue;
 
                     var arr = entry.GetArray();
-                    if (arr.Count < 18)
+                    if (arr.Count < AirplaneMath.OpenSkyStateVectorMinimumFields)
                         continue;
 
                     // Skip aircraft without position

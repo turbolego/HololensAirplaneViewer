@@ -59,6 +59,9 @@ namespace HololensAirplaneViewer.Content
         private const float MarkerScale = 0.25f;
         private const float CeilingOffset = 1.4f;
         private const float AirplaneLabelSize = 0.10f;
+
+        /// <summary>On-ground aircraft within this radius (km) rank with airborne ones.</summary>
+        private const double GroundTrafficRadiusKm = 15.0;
         private const float DebugTextSize = 0.08f;
         private const float DebugLineSpacing = 0.08f;
 
@@ -134,11 +137,18 @@ namespace HololensAirplaneViewer.Content
                         lomin: lon - 3.0, lomax: lon + 3.0,
                         maxCount: MaxAirplanesRendered);
 
+                    // Rank aircraft: airborne first, but also keep on-ground
+                    // traffic within 15 km of the user (e.g. aircraft at your
+                    // airport) — otherwise busy airborne traffic starves them
+                    // out of the top-N slots.
+                    var selected = AirplaneSelection.Select(
+                        live, MaxAirplanesRendered, lat, lon, GroundTrafficRadiusKm);
+
                     // Only render aircraft that are physically above the Earth's
                     // horizon from the user's GPS position (line of sight). A
                     // plane below the horizon is hidden by the Earth's curvature.
                     var visible = AirplaneSelection.OnlyVisibleFrom(
-                        live, lat, lon, AirplaneMath.DefaultObserverAltitudeMeters);
+                        selected, lat, lon, AirplaneMath.DefaultObserverAltitudeMeters);
 
                     airplanes = visible;
                     apiDebug = string.Format(CultureInfo.InvariantCulture, "OpenSky:{0} ACFT", visible.Count);

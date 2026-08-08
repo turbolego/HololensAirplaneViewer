@@ -205,6 +205,19 @@ namespace HololensAirplaneViewer.Tests
         }
 
         // ------------------------------------------------------------------
+        // OpenSky API contract
+        // ------------------------------------------------------------------
+
+        [Fact]
+        public void OpenSkyStateVectorMinimumFields_Is17_Not18()
+        {
+            // REGRESSION GUARD: the OpenSky states/all API returns exactly 17
+            // fields per state vector. A guard of < 18 would reject EVERY
+            // aircraft and the app would render nothing.
+            Assert.Equal(17, AirplaneMath.OpenSkyStateVectorMinimumFields);
+        }
+
+        // ------------------------------------------------------------------
         // App-level behavior: the ±3° query box vs line of sight
         // ------------------------------------------------------------------
 

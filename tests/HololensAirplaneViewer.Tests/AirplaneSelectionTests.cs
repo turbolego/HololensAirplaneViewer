@@ -106,6 +106,74 @@ namespace HololensAirplaneViewer.Tests
             Assert.Equal("null-alt", result[1].Icao24);
         }
 
+        [Fact]
+        public void Select_NearbyGroundTraffic_RanksBeforeAirborne()
+        {
+            // SAS1314 scenario: an aircraft on the ground 0.9 km from the
+            // observer (Gardermoen) must not be starved out by 15+ airborne
+            // planes. It should rank in the reserved nearby-ground group.
+            var states = new List<AirplaneState>
+            {
+                Plane("gnd-near", OsloLat + 0.01, OsloLon, baroAlt: 0f, onGround: true),
+                Plane("air-1", OsloLat + 0.5, OsloLon, baroAlt: 12000f),
+                Plane("air-2", OsloLat + 0.5, OsloLon, baroAlt: 11000f),
+                Plane("gnd-far", OsloLat + 2.0, OsloLon, baroAlt: 0f, onGround: true)
+            };
+
+            var result = AirplaneSelection.Select(states, 3, OsloLat, OsloLon, 15.0);
+
+            // Reserved nearby-ground slot is filled first, then airborne
+            Assert.Equal("gnd-near", result[0].Icao24);
+            Assert.Equal("air-1", result[1].Icao24);
+            Assert.Equal("air-2", result[2].Icao24);
+        }
+
+        [Fact]
+        public void Select_NearbyGroundTraffic_ClosestFirst()
+        {
+            var states = new List<AirplaneState>
+            {
+                Plane("gnd-2km", OsloLat + 0.02, OsloLon, baroAlt: 0f, onGround: true),
+                Plane("gnd-1km", OsloLat + 0.01, OsloLon, baroAlt: 0f, onGround: true)
+            };
+
+            var result = AirplaneSelection.Select(states, 2, OsloLat, OsloLon, 15.0);
+
+            Assert.Equal("gnd-1km", result[0].Icao24);
+            Assert.Equal("gnd-2km", result[1].Icao24);
+        }
+
+        [Fact]
+        public void Select_NearbyGroundGroup_IsCapped()
+        {
+            var states = new List<AirplaneState>();
+            for (int i = 0; i < 10; i++)
+                states.Add(Plane($"gnd{i:D2}", OsloLat + 0.001 * i, OsloLon,
+                    baroAlt: 0f, onGround: true));
+
+            var result = AirplaneSelection.Select(states, 15, OsloLat, OsloLon, 15.0);
+
+            // At most MaxNearbyGroundAircraft ground planes survive
+            Assert.True(result.Count <= AirplaneSelection.MaxNearbyGroundAircraft);
+        }
+
+        [Fact]
+        public void Select_WithoutObserver_KeepsLegacyAirborneFirstOrder()
+        {
+            // Backward compatibility: no observer/radius → old behavior,
+            // airborne first, then on-ground by altitude.
+            var states = new List<AirplaneState>
+            {
+                Plane("gnd", OsloLat, OsloLon, baroAlt: 100f, onGround: true),
+                Plane("air", OsloLat, OsloLon, baroAlt: 10000f)
+            };
+
+            var result = AirplaneSelection.Select(states, 15);
+
+            Assert.Equal("air", result[0].Icao24);
+            Assert.Equal("gnd", result[1].Icao24);
+        }
+
         // ------------------------------------------------------------------
         // OnlyVisibleFrom (line of sight)
         // ------------------------------------------------------------------

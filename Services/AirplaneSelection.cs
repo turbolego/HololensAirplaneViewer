@@ -11,17 +11,50 @@ namespace HololensAirplaneViewer.Services
     /// </summary>
     public static class AirplaneSelection
     {
+        /// <summary>Max on-ground aircraft kept from the observer's immediate area.</summary>
+        public const int MaxNearbyGroundAircraft = 5;
+
         /// <summary>
-        /// Returns up to maxCount aircraft that currently have valid GPS positions,
-        /// sorted airborne first, then by highest altitude.
+        /// Returns up to maxCount aircraft that currently have valid GPS positions.
+        /// Ranking (matching what a viewer at the observer position cares about):
+        ///   1. on-ground traffic within <paramref name="includeGroundWithinKm"/>
+        ///      of the observer (closest first, capped at
+        ///      <see cref="MaxNearbyGroundAircraft"/>) — e.g. aircraft at your
+        ///      airport, which busy airborne traffic would otherwise starve out;
+        ///   2. airborne aircraft (highest altitude first);
+        ///   3. far-away on-ground aircraft.
         /// </summary>
         public static List<AirplaneState> Select(
-            IEnumerable<AirplaneState> states, int maxCount)
+            IEnumerable<AirplaneState> states, int maxCount,
+            double? observerLatDeg = null, double? observerLonDeg = null,
+            double includeGroundWithinKm = 0.0)
         {
-            return states
-                .Where(a => a.HasPosition)
-                .OrderBy(a => a.OnGround ? 1 : 0)
-                .ThenByDescending(a => a.BaroAltitude ?? 0)
+            bool hasObserver = observerLatDeg.HasValue && observerLonDeg.HasValue;
+
+            double DistanceKm(AirplaneState a) => AirplaneMath.GreatCircleDistanceMeters(
+                observerLatDeg.Value, observerLonDeg.Value,
+                a.Latitude.Value, a.Longitude.Value) / 1000.0;
+
+            bool IsNearbyGround(AirplaneState a) =>
+                a.OnGround && hasObserver && includeGroundWithinKm > 0.0
+                && DistanceKm(a) <= includeGroundWithinKm;
+
+            var withPosition = states.Where(a => a.HasPosition).ToList();
+
+            var nearbyGround = withPosition
+                .Where(IsNearbyGround)
+                .OrderBy(DistanceKm)
+                .Take(MaxNearbyGroundAircraft);
+
+            var airborne = withPosition
+                .Where(a => !a.OnGround)
+                .OrderByDescending(a => a.BaroAltitude ?? 0);
+
+            var farGround = withPosition
+                .Where(a => a.OnGround && !IsNearbyGround(a))
+                .OrderByDescending(a => a.BaroAltitude ?? 0);
+
+            return nearbyGround.Concat(airborne).Concat(farGround)
                 .Take(maxCount)
                 .ToList();
         }
