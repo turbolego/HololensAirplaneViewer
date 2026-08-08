@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>disable</Nullable>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>HololensAirplaneViewer.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <!--
+    Test the ACTUAL production source files by linking them into this project.
+    Only files with no UWP/SharpDX dependencies can be linked here:
+      - Services/AirplaneMath.cs       (pure geo math + line-of-sight)
+      - Services/AirplaneSelection.cs  (pure selection/filtering)
+      - Models/AirplaneState.cs        (pure data model)
+    The UWP-only glue (AirplaneService JSON parsing, AirplaneRenderer D3D,
+    GeolocationService) is exercised on-device/CI-build, not here.
+  -->
+  <ItemGroup>
+    <Compile Include="..\..\Services\AirplaneMath.cs" Link="AirplaneMath.cs" />
+    <Compile Include="..\..\Services\AirplaneSelection.cs" Link="AirplaneSelection.cs" />
+    <Compile Include="..\..\Models\AirplaneState.cs" Link="AirplaneState.cs" />
+  </ItemGroup>
+
+</Project>

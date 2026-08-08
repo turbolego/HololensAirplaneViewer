@@ -48,7 +48,7 @@ namespace HololensAirplaneViewer.Services
             try
             {
                 var raw = await HttpClient.GetStringAsync(url);
-                return ParseStates(raw, maxCount);
+                return AirplaneSelection.Select(ParseStatesIntoList(raw), maxCount);
             }
             catch
             {
@@ -57,13 +57,14 @@ namespace HololensAirplaneViewer.Services
         }
 
         /// <summary>
-        /// Parses the OpenSky "states/all" JSON response.
+        /// Parses the OpenSky "states/all" JSON response into raw aircraft states
+        /// (no selection/sorting — see <see cref="AirplaneSelection"/>).
         /// Each state vector is a flat JSON array:
         /// [0]=icao24, [1]=callsign, [2]=origin_country, [5]=longitude,
         /// [6]=latitude, [7]=baro_altitude, [8]=on_ground, [9]=velocity,
         /// [10]=true_track, [13]=geo_altitude, [14]=vertical_rate, [15]=sensors
         /// </summary>
-        private static List<AirplaneState> ParseStates(string json, int maxCount)
+        private static List<AirplaneState> ParseStatesIntoList(string json)
         {
             var list = new List<AirplaneState>();
 
@@ -106,7 +107,7 @@ namespace HololensAirplaneViewer.Services
 
                     list.Add(plane);
 
-                    if (list.Count >= maxCount * 3)
+                    if (list.Count >= 45)
                         break;
                 }
             }
@@ -115,12 +116,7 @@ namespace HololensAirplaneViewer.Services
                 // Gracefully return what we parsed so far
             }
 
-            return list
-                .Where(a => a.HasPosition)
-                .OrderBy(a => a.OnGround ? 1 : 0)
-                .ThenByDescending(a => a.BaroAltitude ?? 0)
-                .Take(maxCount)
-                .ToList();
+            return list;
         }
 
         private static string SafeGetString(JsonArray arr, int idx)

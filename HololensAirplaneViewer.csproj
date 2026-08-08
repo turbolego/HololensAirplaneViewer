@@ -77,6 +77,8 @@
     <Compile Include="Content\SpatialInputHandler.cs" />
     <Compile Include="Content\AirplaneRenderer.cs" />
     <Compile Include="Models\AirplaneState.cs" />
+    <Compile Include="Services\AirplaneMath.cs" />
+    <Compile Include="Services\AirplaneSelection.cs" />
     <Compile Include="Services\GeolocationService.cs" />
     <Compile Include="Services\AirplaneService.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

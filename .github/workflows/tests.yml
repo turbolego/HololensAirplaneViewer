@@ -1,0 +1,33 @@
+# Runs the unit tests for the pure (non-UWP) logic: AirplaneMath,
+# AirplaneSelection, AirplaneState. These files have no UWP/SharpDX
+# dependencies, so they run on any OS with the .NET 8 SDK.
+#
+# The UWP app itself (D3D rendering, JSON glue, geolocation) is built by
+# dotnet-desktop.yml / dotnet.yml on windows-2022.
+
+name: Tests
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Restore
+        run: dotnet restore tests/HololensAirplaneViewer.Tests/HololensAirplaneViewer.Tests.csproj
+
+      - name: Test
+        run: dotnet test tests/HololensAirplaneViewer.Tests/HololensAirplaneViewer.Tests.csproj --no-restore --verbosity normal

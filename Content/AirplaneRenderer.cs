@@ -57,9 +57,7 @@ namespace HololensAirplaneViewer.Content
 
         private const int MaxAirplanesRendered = 15;
         private const float MarkerScale = 0.25f;
-        private const float DomeRadiusMeters = 2.5f;
         private const float CeilingOffset = 1.4f;
-        private const float CeilingClearance = 0.3f;
         private const float AirplaneLabelSize = 0.10f;
         private const float DebugTextSize = 0.08f;
         private const float DebugLineSpacing = 0.08f;
@@ -136,8 +134,14 @@ namespace HololensAirplaneViewer.Content
                         lomin: lon - 3.0, lomax: lon + 3.0,
                         maxCount: MaxAirplanesRendered);
 
-                    airplanes = live;
-                    apiDebug = string.Format(CultureInfo.InvariantCulture, "OpenSky:{0} ACFT", live.Count);
+                    // Only render aircraft that are physically above the Earth's
+                    // horizon from the user's GPS position (line of sight). A
+                    // plane below the horizon is hidden by the Earth's curvature.
+                    var visible = AirplaneSelection.OnlyVisibleFrom(
+                        live, lat, lon, AirplaneMath.DefaultObserverAltitudeMeters);
+
+                    airplanes = visible;
+                    apiDebug = string.Format(CultureInfo.InvariantCulture, "OpenSky:{0} ACFT", visible.Count);
                     lastError = "";
 
                     lastFetchUtc = DateTime.UtcNow;
@@ -257,9 +261,7 @@ namespace HololensAirplaneViewer.Content
         /// <summary>
         /// Converts a live aircraft's WGS-84 lat/lon/alt into local HoloLens
         /// world coordinates, mapped into the dome above the user.
-        /// Uses a planar approximation of the Earth around the GPS fix:
-        ///   1° latitude  ≈ 111,320 m
-        ///   1° longitude ≈ 111,320 m × cos(lat)
+        /// Pure math lives in <see cref="AirplaneMath"/> (unit-tested).
         /// </summary>
         private Vector3 ComputeAirplanePosition(AirplaneState plane)
         {
@@ -268,33 +270,14 @@ namespace HololensAirplaneViewer.Content
                 return new Vector3(worldCenter.X, worldCenter.Y + 1.5f, worldCenter.Z);
             }
 
-            // Distance from the user's GPS fix (meters)
-            double dLat = plane.Latitude.Value - currentLatitude;
-            double dLon = plane.Longitude.Value - currentLongitude;
-            const double OneDegMeters = 111320.0;
-
-            double xMeters = dLon * OneDegMeters * Math.Cos(currentLatitude * Math.PI / 180.0);
-            double zMeters = dLat * OneDegMeters;
-
-            // Altitude meters → display units (scale down for the dome)
-            double altM = plane.GeoAltitude ?? plane.BaroAltitude ?? 0.0;
-            double altDisplay = Math.Min(altM * 0.002, 1.5);
-
-            // Clamp horizontal offset into the dome radius
-            double horiz = Math.Min(Math.Sqrt(xMeters * xMeters + zMeters * zMeters), DomeRadiusMeters - 0.2);
-            double angle = Math.Atan2(zMeters, xMeters);
-
-            float x = (float)(horiz * Math.Cos(angle));
-            float z = (float)(horiz * Math.Sin(angle));
-            float y = (ceilingY - CeilingClearance) + (float)altDisplay;
-
-            // Keep markers above the floor relative to the user
-            if (y < worldCenter.Y - 0.1f)
-            {
-                y = worldCenter.Y - 0.1f;
-            }
-
-            return new Vector3(worldCenter.X + x, y, worldCenter.Z + z);
+            return AirplaneMath.ComputeDomePosition(
+                plane.Latitude.Value,
+                plane.Longitude.Value,
+                plane.AltMeters,
+                currentLatitude,
+                currentLongitude,
+                worldCenter,
+                ceilingY);
         }
 
         private void DrawCubeAt(Vector3 worldPos, float scale)

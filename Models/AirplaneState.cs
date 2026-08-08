@@ -41,6 +41,9 @@ namespace HololensAirplaneViewer.Models
         /// <summary>Whether this aircraft has a valid GPS fix (can be positioned).</summary>
         public bool HasPosition => Latitude.HasValue && Longitude.HasValue;
 
+        /// <summary>Best available altitude in meters (geometric preferred, barometric fallback).</summary>
+        public float AltMeters => GeoAltitude ?? BaroAltitude ?? 0f;
+
         /// <summary>Display name: callsign if set, otherwise ICAO.</summary>
         public string DisplayName => !string.IsNullOrEmpty(Callsign)
             ? Callsign.Trim()
