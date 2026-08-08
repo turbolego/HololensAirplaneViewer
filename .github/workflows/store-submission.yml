@@ -9,6 +9,9 @@
 #      - AZURE_AD_CLIENT_ID       (from App registrations > your app)
 #      - AZURE_AD_CLIENT_SECRET   (from App > Certificates & secrets)
 #      - SELLER_ID                (from Partner Center > Account settings > Identifiers)
+#      - PRODUCT_ID (optional)    (Partner Center > your app > Product identity >
+#                                  'Product ID' GUID; if unset the workflow
+#                                  discovers it via 'msstore apps list')
 #   5. The app must already exist in Partner Center with at least one
 #      submission (even a draft with the correct package info).
 #
@@ -184,21 +187,41 @@ jobs:
           (github.event_name == 'workflow_dispatch' && github.event.inputs.action == 'submit')
           || github.event_name == 'push'
         shell: pwsh
+        env:
+          PRODUCT_ID: ${{ secrets.PRODUCT_ID }}
         run: |
-          # Find the product ID from the manifest
+          $ErrorActionPreference = 'Stop'
+
+          # The msstore CLI needs the Partner Center PRODUCT ID (a GUID), NOT
+          # the manifest identity name (e.g. 'Turbolego.HololensAirplaneViewer').
+          # Resolve it via 'msstore apps list', which prints a table with
+          # columns: ProductId | Display Name | PackageId. Match the PackageId
+          # column against the manifest identity name and take the ProductId.
+          # Optional: set a PRODUCT_ID repo secret to skip discovery.
           $manifest = [xml](Get-Content "${{ github.workspace }}\Package.appxmanifest")
-          $identity = $manifest.Package.Identity
-          $appName = $identity.Name
-          Write-Host "Publishing app: $appName (Version: $($identity.Version))"
-          # Find the .appxupload
-          $upload = Get-ChildItem -Path "${{ github.workspace }}\AppPackages" `
-            -Recurse -Filter "*.appxupload" | Select-Object -First 1
-          if ($upload) {
-            msstore publish $upload.FullName -id $appName
-          } else {
-            # Fall back: submit the AppPackages folder for UWP submissions
-            msstore submission create -id $appName
-            msstore submission upload -id $appName `
-              -package "${{ github.workspace }}\AppPackages\**\*.appx"
-            msstore submission publish -id $appName
+          $identityName = $manifest.Package.Identity.Name
+          Write-Host "Manifest identity name: $identityName"
+
+          $productId = $env:PRODUCT_ID
+          if ([string]::IsNullOrWhiteSpace($productId)) {
+            Write-Host "No PRODUCT_ID secret -- discovering via 'msstore apps list'..."
+            # Strip ANSI escapes and Spectre.Console markup (e.g. [bold u]...[/])
+            $clean = (msstore apps list 2>&1 | Out-String) `
+              -replace "`e\[[0-9;]*m", "" `
+              -replace '\[/?[a-zA-Z0-9 ]+\]', ""
+            foreach ($line in ($clean -split "`r?`n")) {
+              $cells = $line -split '│' | ForEach-Object { $_.Trim() }
+              if ($cells -contains $identityName) { $productId = $cells[2]; break }
+            }
+            if ([string]::IsNullOrWhiteSpace($productId)) {
+              throw "Could not resolve the Store product ID for '$identityName'. " +
+                    "Run 'msstore apps list' locally to find it, then set a PRODUCT_ID repo secret."
+            }
           }
+          Write-Host "Store product ID: $productId"
+
+          # Publish the already-built package(s) in AppPackages/. Point msstore
+          # at the PROJECT DIRECTORY (it locates Package.appxmanifest and the
+          # newest *.appxupload under AppPackages/) -- passing a bare
+          # .appxupload FILE fails with 'could not find a project publisher'.
+          msstore publish "${{ github.workspace }}" -id $productId
