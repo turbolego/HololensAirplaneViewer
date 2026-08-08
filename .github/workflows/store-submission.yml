@@ -192,20 +192,19 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          # DEBUG: dump the apps list output to see the table format
-          Write-Host "=== DEBUG msstore apps list raw ==="
-          msstore apps list 2>&1 | ForEach-Object { Write-Host "RAW| $_" }
-          Write-Host "=== DEBUG end ==="
-
           # The msstore CLI needs the Partner Center PRODUCT ID (a GUID), NOT
           # the manifest identity name (e.g. 'Turbolego.HololensAirplaneViewer').
           # Resolve it via 'msstore apps list', which prints a table with
-          # columns: ProductId | Display Name | PackageId. Match the PackageId
-          # column against the manifest identity name and take the ProductId.
+          # columns: ProductId | Display Name | PackageId. Match the Display
+          # Name column (from the manifest, short, never wraps) and take the
+          # ProductId. The PackageId column is NOT used for matching because
+          # the CLI truncates/wraps long package identity names across lines.
           # Optional: set a PRODUCT_ID repo secret to skip discovery.
           $manifest = [xml](Get-Content "${{ github.workspace }}\Package.appxmanifest")
           $identityName = $manifest.Package.Identity.Name
+          $displayName = $manifest.Package.Properties.DisplayName
           Write-Host "Manifest identity name: $identityName"
+          Write-Host "Manifest display name:  $displayName"
 
           $productId = $env:PRODUCT_ID
           if ([string]::IsNullOrWhiteSpace($productId)) {
@@ -216,10 +215,10 @@ jobs:
               -replace '\[/?[a-zA-Z0-9 ]+\]', ""
             foreach ($line in ($clean -split "`r?`n")) {
               $cells = $line -split '│' | ForEach-Object { $_.Trim() }
-              if ($cells -contains $identityName) { $productId = $cells[2]; break }
+              if ($cells -contains $displayName) { $productId = $cells[2]; break }
             }
             if ([string]::IsNullOrWhiteSpace($productId)) {
-              throw "Could not resolve the Store product ID for '$identityName'. " +
+              throw "Could not resolve the Store product ID for '$displayName'. " +
                     "Run 'msstore apps list' locally to find it, then set a PRODUCT_ID repo secret."
             }
           }
