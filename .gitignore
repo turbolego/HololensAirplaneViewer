@@ -364,6 +364,9 @@ MigrationBackup/
 # Ionide (cross platform F# VS Code tools) working folder
 .ionide/
 
+# Hermes Agent
+.hermes/
+
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 
