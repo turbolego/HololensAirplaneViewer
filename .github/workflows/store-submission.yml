@@ -18,7 +18,7 @@
 # NOTE: Each 'submit' run auto-increments <Identity Version> in
 # Package.appxmanifest (4th segment stays 0, as the Store requires), commits
 # the bump back to the repo after a successful submission, and creates a
-# GitHub release tagged v<version> with the .appxupload attached.
+# GitHub release tagged v<version> with the sideloadable .appx attached.
 #
 # See: https://learn.microsoft.com/windows/apps/publish/msstore-dev-cli/github-actions
 #
@@ -259,6 +259,8 @@ jobs:
           Write-Host "Committed and pushed Package.appxmanifest (v$env:NEXT_VERSION)"
 
       # ── Create GitHub release (only after a successful submit) ───────
+      # Attach a sideloadable .appx artifact for GitHub releases.
+      # .appxupload remains used for Microsoft Store submission only.
       - name: Create GitHub release
         if: github.event.inputs.action == 'submit'
         shell: pwsh
@@ -267,9 +269,11 @@ jobs:
         run: |
           $tag = "v$env:NEXT_VERSION"
           $pkg = Get-ChildItem -Path "${{ github.workspace }}\AppPackages" `
-            -Recurse -Filter "*.appxupload" |
+            -Recurse -Filter "*.appx" |
+            Where-Object { $_.FullName -notmatch '[\\/]Dependencies[\\/]' } |
             Sort-Object LastWriteTime -Descending |
             Select-Object -First 1
+          if (-not $pkg) { throw "No sideloadable .appx found in AppPackages/." }
           Write-Host "Creating release $tag with package: $($pkg.Name)"
           $bumpSha = git rev-parse HEAD
           gh release create $tag `
