@@ -116,7 +116,9 @@ namespace HololensAirplaneViewer.Services
             double dLon = planeLonDeg - observerLonDeg;
 
             double xMeters = dLon * OneDegreeMeters * Math.Cos(DegreesToRadians(observerLatDeg));
-            double zMeters = dLat * OneDegreeMeters;
+            // HoloLens view space looks down -Z when facing forward.
+            // Map geographic north to forward by negating latitude delta.
+            double zMeters = -dLat * OneDegreeMeters;
 
             // Altitude meters → display units (scaled down for the dome, capped)
             double altDisplay = Math.Min(Math.Max(planeAltM, 0.0) * AltitudeDisplayScale, AltitudeDisplayCap);

@@ -140,9 +140,9 @@ namespace HololensAirplaneViewer.Tests
             double horiz = Math.Sqrt(p.X * p.X + p.Z * p.Z);
             Assert.Equal(2.3, horiz, 3);
 
-            // North is +Z in the dome frame
+            // North maps to -Z so it appears forward in HoloLens view space.
             Assert.Equal(0.0f, p.X, 3);
-            Assert.Equal(2.3f, p.Z, 3);
+            Assert.Equal(-2.3f, p.Z, 3);
 
             // Altitude 10,000 m → scale 0.002 → 20 → capped at 1.5
             Assert.Equal(1.1f + 1.5f, p.Y, 3);
