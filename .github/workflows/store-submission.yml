@@ -274,11 +274,17 @@ jobs:
             Sort-Object LastWriteTime -Descending |
             Select-Object -First 1
           if (-not $pkg) { throw "No sideloadable .appx found in AppPackages/." }
+          $downloadUrl = "https://github.com/${{ github.repository }}/releases/download/$tag/$($pkg.Name)"
+          $releaseNotes = @(
+            "Store submission of version $env:NEXT_VERSION.",
+            "",
+            "Direct sideload download: [$($pkg.Name)]($downloadUrl)"
+          ) -join "`n"
           Write-Host "Creating release $tag with package: $($pkg.Name)"
           $bumpSha = git rev-parse HEAD
           gh release create $tag `
             --title "HololensAirplaneViewer $tag" `
-            --notes "Store submission of version $env:NEXT_VERSION." `
+            --notes $releaseNotes `
             --target $bumpSha `
             "$($pkg.FullName)"
           Write-Host "Release $tag created: https://github.com/turbolego/HololensAirplaneViewer/releases/tag/$tag"
