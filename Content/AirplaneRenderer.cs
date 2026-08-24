@@ -58,6 +58,9 @@ namespace HololensAirplaneViewer.Content
         private string gpsDebug = "GPS: --";
         private string apiDebug = "OpenSky: --";
         private string lastError = "";
+        
+        private Vector3 settingsButtonPosition = Vector3.Zero;
+        private float settingsButtonRadius = 0.2f;
 
         // Observer's GPS fix (used for lat/lon → local dome mapping)
         private double currentLatitude = 59.91;  // ≈ Oslo fallback
@@ -277,6 +280,11 @@ namespace HololensAirplaneViewer.Content
             }
 
             float startY = panelCenter.Y + 0.35f;
+            
+            // Render Settings Button above the list
+            settingsButtonPosition = new Vector3(panelCenter.X - 0.7f, startY + 0.15f, panelCenter.Z);
+            DrawTextBillboard(" [ SETTINGS ] ", settingsButtonPosition, DebugTextSize * 1.2f, false, compassHeadingDegrees);
+
             for (int i = 0; i < lines.Count && i < 11; i++)
             {
                 Vector3 p = new Vector3(panelCenter.X - 0.7f, startY - i * DebugLineSpacing, panelCenter.Z);
@@ -652,6 +660,31 @@ namespace HololensAirplaneViewer.Content
         private struct ModelConstantBuffer
         {
             public Matrix4x4 model;
+        }
+        public bool CheckSettingsHit(SpatialPointerPose headPose)
+        {
+            if (headPose == null || settingsButtonPosition == Vector3.Zero)
+                return false;
+
+            // Simplified sphere intersection for the button
+            Vector3 gazeDir = headPose.Head.ForwardDirection;
+            Vector3 gazeOrigin = headPose.Head.Position;
+            
+            // Vector from gaze origin to button center
+            Vector3 toButton = settingsButtonPosition - gazeOrigin;
+            
+            // Distance from origin to projection of center onto gaze line
+            float t = Vector3.Dot(toButton, gazeDir);
+            
+            if (t < 0) return false; // Button is behind us
+
+            // Closest point on gaze line to button center
+            Vector3 closestPoint = gazeOrigin + gazeDir * t;
+            
+            // Distance squared from button center to closest point on line
+            float distSq = (settingsButtonPosition - closestPoint).LengthSquared();
+            
+            return distSq < (settingsButtonRadius * settingsButtonRadius);
         }
     }
 }

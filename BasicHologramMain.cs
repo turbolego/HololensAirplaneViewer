@@ -21,6 +21,9 @@ using HololensAirplaneViewer.Services;
 using System.Threading.Tasks;
 using Windows.Foundation;
 using System.Collections.Generic;
+using Windows.ApplicationModel.Core;
+using Windows.UI.Core;
+using Windows.UI.ViewManagement;
 
 #if DRAW_SAMPLE_CONTENT
 using HololensAirplaneViewer.Content;
@@ -222,6 +225,16 @@ namespace HololensAirplaneViewer
                 }
 
                 SpatialInteractionSourceState pointerState = spatialInputHandler.CheckForInput();
+                
+                // Always obtain the current head pose every frame
+                SpatialPointerPose headPose = SpatialPointerPose.TryGetAtTimestamp(
+                    stationaryReferenceFrame.CoordinateSystem, prediction.Timestamp);
+
+                if (pointerPressed && airplaneRenderer.CheckSettingsHit(headPose))
+                {
+                    OpenSettingsView();
+                }
+
                 pointerPressed = false;
 
                 // Always obtain the current head pose every frame so the sky-dome
@@ -623,5 +636,21 @@ namespace HololensAirplaneViewer
                 }
             }
         }
+
+        private async void OpenSettingsView()
+        {
+            CoreApplicationView newView = CoreApplication.CreateNewView();
+            int newViewId = 0;
+            await newView.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
+            {
+                var frame = new Windows.UI.Xaml.Controls.Frame();
+                frame.Navigate(typeof(SettingsPage));
+                Windows.UI.Xaml.Window.Current.Content = frame;
+                Windows.UI.Xaml.Window.Current.Activate();
+                newViewId = ApplicationView.GetForCurrentView().Id;
+            });
+            await CoreApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
+        }
     }
 }
+/* Appended for settings view */
