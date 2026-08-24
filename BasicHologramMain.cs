@@ -21,9 +21,9 @@ using HololensAirplaneViewer.Services;
 using System.Threading.Tasks;
 using Windows.Foundation;
 using System.Collections.Generic;
-using Windows.ApplicationModel.Core;
 using Windows.UI.Core;
 using Windows.UI.ViewManagement;
+using Windows.ApplicationModel.Core;
 
 #if DRAW_SAMPLE_CONTENT
 using HololensAirplaneViewer.Content;
@@ -236,13 +236,6 @@ namespace HololensAirplaneViewer
                 }
 
                 pointerPressed = false;
-
-                // Always obtain the current head pose every frame so the sky-dome
-                // tracks the user as they move through the room.
-                // SpatialPointerPose.TryGetAtTimestamp reads directly from the
-                // prediction and is always valid while positional tracking is active.
-                SpatialPointerPose headPose = SpatialPointerPose.TryGetAtTimestamp(
-                    stationaryReferenceFrame.CoordinateSystem, prediction.Timestamp);
 
                 // Read the latest compass heading (updated on background thread by CompassService)
                 float compassHeading = compassService?.CurrentHeadingDegrees ?? 0f;
@@ -649,7 +642,10 @@ namespace HololensAirplaneViewer
                 Windows.UI.Xaml.Window.Current.Activate();
                 newViewId = ApplicationView.GetForCurrentView().Id;
             });
-            await CoreApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
+            await newView.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () =>
+            {
+                await ApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
+            });
         }
     }
 }
