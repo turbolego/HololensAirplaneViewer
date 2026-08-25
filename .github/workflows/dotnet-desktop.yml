@@ -14,8 +14,6 @@ on:
 jobs:
   package:
     runs-on: windows-2022
-    env:
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
     steps:
       - name: Checkout
@@ -78,7 +76,7 @@ jobs:
 
       - name: Upload appx artifact
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: HololensAirplaneViewer-${{ github.sha }}-Release-x86
           path: |

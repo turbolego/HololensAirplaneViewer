@@ -155,7 +155,7 @@ jobs:
 
       - name: Upload WACK report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: WACK-Report
           path: |
@@ -166,7 +166,7 @@ jobs:
       # ── Upload app package as artifact ───────────────────────────────
       - name: Upload appxupload artifact
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: HololensAirplaneViewer-${{ github.sha }}-Store-x86
           path: |
@@ -242,12 +242,7 @@ jobs:
           # at the PROJECT DIRECTORY (it locates Package.appxmanifest and the
           # newest *.appxupload under AppPackages/) -- passing a bare
           # .appxupload FILE fails with 'could not find a project publisher'.
-          
-          # Set Azure SDK timeouts to prevent immediate TaskCanceledException
-          $env:AZURE_REQUEST_TIMEOUT = '300'
-          $env:AZURE_HTTP_CLIENT_TIMEOUT = '300'
-          
-          msstore publish "${{ github.workspace }}" -id $productId --verbose
+          msstore publish "${{ github.workspace }}" -id $productId
 
       # ── Persist the version bump (only after a successful submit) ────
       # Commit Package.appxmanifest back to main so the repo always matches

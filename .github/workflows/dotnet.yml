@@ -17,8 +17,6 @@ jobs:
         configuration: [Debug, Release]
 
     runs-on: windows-2022
-    env:
-      ACTIONS_ALLOW_USE_UNSECURE_NODE_VERSION: true
 
     steps:
       - name: Checkout
