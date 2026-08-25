@@ -632,20 +632,24 @@ namespace HololensAirplaneViewer
 
         private async void OpenSettingsView()
         {
+            // Use ApplicationViewSwitcher to switch to a new XAML view
             CoreApplicationView newView = CoreApplication.CreateNewView();
             int newViewId = 0;
+            
             await newView.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
             {
+                // This requires a XAML-based App.xaml entry point to work correctly
+                // which this project currently lacks as a pure D3D app.
+                // This approach will fail until an App.xaml is added.
                 var frame = new Windows.UI.Xaml.Controls.Frame();
-                frame.Navigate(typeof(SettingsPage));
-                Windows.UI.Xaml.Window.Current.Content = frame;
-                Windows.UI.Xaml.Window.Current.Activate();
+                // frame.Navigate(typeof(SettingsPage));
+                // Windows.UI.Xaml.Window.Current.Content = frame;
+                // Windows.UI.Xaml.Window.Current.Activate();
                 newViewId = ApplicationView.GetForCurrentView().Id;
             });
-            await newView.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, async () =>
-            {
-                await ApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
-            });
+            
+            // await ApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
+            Debug.WriteLine("View switching not yet fully supported without App.xaml");
         }
     }
 }
