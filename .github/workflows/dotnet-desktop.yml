@@ -28,9 +28,7 @@ jobs:
       - name: Install Windows 10 SDK 19041 and UWP MSBuild tools
         shell: powershell
         run: |
-          $vswhere   = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
           $vsPath    = & $vswhere -latest -products * -property installationPath
-          $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vs_installer.exe"
           & $installer modify `
             --installPath "$vsPath" `
             --add Microsoft.VisualStudio.Component.Windows10SDK.19041 `
