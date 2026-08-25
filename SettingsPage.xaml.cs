@@ -18,7 +18,9 @@ namespace HololensAirplaneViewer
             // TODO: Pass the address back to the main view
             
             // Close this view
-            Windows.ApplicationModel.Core.CoreApplication.GetCurrentView().CoreWindow.Close();
+            this.Dispatcher.RunAsync(Windows.UI.Core.CoreDispatcherPriority.Normal, () => {
+                Window.Current.Close();
+            });
         }
     }
 }
