@@ -242,7 +242,13 @@ jobs:
           # at the PROJECT DIRECTORY (it locates Package.appxmanifest and the
           # newest *.appxupload under AppPackages/) -- passing a bare
           # .appxupload FILE fails with 'could not find a project publisher'.
-          msstore publish "${{ github.workspace }}" -id $productId
+          
+          # Use explicit network and retry settings to avoid TaskCanceledException
+          $env:AZURE_REQUEST_TIMEOUT = '300'
+          $env:AZURE_HTTP_CLIENT_TIMEOUT_SECONDS = '300'
+          $env:AZURE_RETRY_TOTAL_TIMEOUT_SECONDS = '600'
+          
+          msstore publish "${{ github.workspace }}" -id $productId --verbose
 
       # ── Persist the version bump (only after a successful submit) ────
       # Commit Package.appxmanifest back to main so the repo always matches
