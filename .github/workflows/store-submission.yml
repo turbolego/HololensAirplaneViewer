@@ -244,9 +244,8 @@ jobs:
           # .appxupload FILE fails with 'could not find a project publisher'.
           
           # Set Azure SDK timeouts to prevent immediate TaskCanceledException
-          $env:AZURE_REQUEST_TIMEOUT = '300'
-          $env:AZURE_HTTP_CLIENT_TIMEOUT_SECONDS = '300'
-          $env:AZURE_RETRY_TOTAL_TIMEOUT_SECONDS = '600'
+          $env:AZURE_REQUEST_TIMEOUT = '00:05:00'
+          $env:AZURE_HTTP_CLIENT_TIMEOUT = '00:05:00'
           
           msstore publish "${{ github.workspace }}" -id $productId --verbose
 
