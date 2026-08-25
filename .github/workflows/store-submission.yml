@@ -181,7 +181,7 @@ jobs:
       # ── Store submission (only on explicit 'submit') ────────────────
       - name: Configure Microsoft Store CLI
         if: github.event.inputs.action == 'submit'
-        uses: microsoft/microsoft-store-apppublisher@v1.1
+        uses: microsoft/microsoft-store-apppublisher@v1.4
 
       - name: Reconfigure store credentials
         if: github.event.inputs.action == 'submit'
