@@ -24,4 +24,4 @@ The HoloLens 1 application is built using the **Universal Windows Platform (UWP)
 *   **Breaking Changes:** Newer runner images (e.g., `windows-2025`) update the default Visual Studio and MSBuild versions, which frequently deprecate or remove support for legacy UWP components and older Windows SDKs required to generate valid HoloLens 1 app packages.
 *   **Build Reliability:** Upgrading runners has historically caused failures in the `vs_installer.exe` scripts used to dynamically install required older SDKs, as well as breaking changes in the .NET Native AOT toolchain, leading to the `WMC9999` internal XAML compiler errors observed when trying to modernize the pipeline.
 
-Maintain build stability by pinning the runner image to `windows-2022`.
+Maintain build stability by pinning the runner image to `windows-2022`. See related discussion on [GitHub Runner Images Issue #14101](https://github.com/actions/runner-images/issues/14101) regarding missing legacy UWP toolsets in newer Windows Server runner images.
