@@ -7,7 +7,7 @@
 The project targets the **Microsoft HoloLens 1st Gen**, which operates on an x86 Intel Atom CPU architecture and relies on the **.NET Native AOT compilation** pipeline.
 
 *   **Version 3.0.2:** Verified stable and compatible with the .NET Native toolchain on the HoloLens 1 Windows Holographic OS.
-*   **Version 4.x:** While functionally similar on desktop, the 4.x series (the final release branch) introduced Marshalling and Interop changes that cause severe issues during .NET Native AOT compilation for x86. Common symptoms include:
+*   **Version 4.x:** While functionally similar on desktop, the 4.x series (the final release branch) introduced Marshalling and Interop changes that cause severe issues during .NET Native AOT compilation for x86. This is a known issue documented in [SharpDX Issue #801](https://github.com/sharpdx/SharpDX/issues/801) and [SharpDX Issue #911](https://github.com/sharpdx/SharpDX/issues/911). Common symptoms include:
     *   `TypeLoadException` at runtime.
     *   Namespace conflicts between `SharpDX.Mathematics` and `System.Numerics`.
     *   Silent crashes in `Release` builds on the physical HoloLens 1 device.
