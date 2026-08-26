@@ -225,6 +225,10 @@ namespace HololensAirplaneViewer
                 }
 
                 SpatialInteractionSourceState pointerState = spatialInputHandler.CheckForInput();
+                if (pointerState != null)
+                {
+                    pointerPressed = true;
+                }
                 
                 // Always obtain the current head pose every frame
                 SpatialPointerPose headPose = SpatialPointerPose.TryGetAtTimestamp(
@@ -503,130 +507,64 @@ namespace HololensAirplaneViewer
 
         public void OnCameraAdded(
             HolographicSpace sender,
-            HolographicSpaceCameraAddedEventArgs args
-            )
+            HolographicSpaceCameraAddedEventArgs args)
         {
-            Deferral deferral = args.GetDeferral();
-            HolographicCamera holographicCamera = args.Camera;
+            // Deferral helps to keep the app responsive.
+            HolographicCameraDeferral deferral = args.GetDeferral();
 
-            Task task1 = new Task(() =>
-            {
-                //
-                // TODO: Allocate resources for the new camera and load any content specific to
-                //       that camera. Note that the render target size (in pixels) is a property
-                //       of the HolographicCamera object, and can be used to create off-screen
-                //       render targets that match the resolution of the HolographicCamera.
-                //
+            // Create camera-specific resources.
+            deviceResources.CreateResourcesForBackBuffer(args.Camera);
 
-                // Create device-based resources for the holographic camera and add it to the list of
-                // cameras used for updates and rendering. Notes:
-                //   * Since this function may be called at any time, the AddHolographicCamera function
-                //     waits until it can get a lock on the set of holographic camera resources before
-                //     adding the new camera. At 60 frames per second this wait should not take long.
-                //   * A subsequent Update will take the back buffer from the RenderingParameters of this
-                //     camera's CameraPose and use it to create the ID3D11RenderTargetView for this camera.
-                //     Content can then be rendered for the HolographicCamera.
-                deviceResources.AddHolographicCamera(holographicCamera);
-
-                // Holographic frame predictions will not include any information about this camera until
-                // the deferral is completed.
-                deferral.Complete();
-            });
-            task1.Start();
+            // Complete the deferral.
+            deferral.Complete();
         }
 
         public void OnCameraRemoved(
             HolographicSpace sender,
-            HolographicSpaceCameraRemovedEventArgs args
-            )
+            HolographicSpaceCameraRemovedEventArgs args)
         {
-            Task task2 = new Task(() =>
-            {
-                //
-                // TODO: Asynchronously unload or deactivate content resources (not back buffer 
-                //       resources) that are specific only to the camera that was removed.
-                //
-            });
-            task2.Start();
-
-            // Before letting this callback return, ensure that all references to the back buffer 
-            // are released.
-            // Since this function may be called at any time, the RemoveHolographicCamera function
-            // waits until it can get a lock on the set of holographic camera resources before
-            // deallocating resources for this camera. At 60 frames per second this wait should
-            // not take long.
-            deviceResources.RemoveHolographicCamera(args.Camera);
+            // Release camera-specific resources.
+            deviceResources.ReleaseResourcesForBackBuffer(args.Camera);
         }
 
-        public void OnGamepadAdded(Object o, Gamepad args)
+        public void OnGamepadAdded(Object sender, Gamepad gamepad)
         {
-            foreach (var gamepadWithButtonState in gamepads)
-            {
-                if (args == gamepadWithButtonState.gamepad)
-                {
-                    // This gamepad is already in the list.
-                    return;
-                }
-            }
-
-            gamepads.Add(new GamepadWithButtonState(args, false));
+            gamepads.Add(new GamepadWithButtonState(gamepad, false));
         }
 
-        public void OnGamepadRemoved(Object o, Gamepad args)
+        public void OnGamepadRemoved(Object sender, Gamepad gamepad)
         {
-            foreach (var gamepadWithButtonState in gamepads)
+            for (int i = 0; i < gamepads.Count; i++)
             {
-                if (args == gamepadWithButtonState.gamepad)
+                if (gamepads[i].gamepad == gamepad)
                 {
-                    // This gamepad is in the list; remove it.
-                    gamepads.Remove(gamepadWithButtonState);
-                    return;
+                    gamepads.RemoveAt(i);
+                    break;
                 }
             }
         }
 
-        void OnHolographicDisplayIsAvailableChanged(Object o, Object args)
+        public void OnHolographicDisplayIsAvailableChanged(HolographicSpace sender, Object args)
         {
-            // Get the spatial locator for the default HolographicDisplay, if one is available.
-            SpatialLocator spatialLocator = null;
-            if (canGetDefaultHolographicDisplay)
+            // Get the default holographic display for the current view.
+            HolographicDisplay holographicDisplay = HolographicDisplay.GetDefault();
+
+            if (holographicDisplay != null)
             {
-                HolographicDisplay defaultHolographicDisplay = HolographicDisplay.GetDefault();
-                if (defaultHolographicDisplay != null)
-                {
-                    spatialLocator = defaultHolographicDisplay.SpatialLocator;
-                }
+                spatialLocator = holographicDisplay.SpatialLocator;
             }
             else
             {
-                spatialLocator = SpatialLocator.GetDefault();
+                spatialLocator = null;
             }
 
-            if (this.spatialLocator != spatialLocator)
+            if (spatialLocator != null)
             {
-                // If the spatial locator is disconnected or replaced, we should discard any state that was
-                // based on it.
-                if (this.spatialLocator != null)
-                {
-                    this.spatialLocator.LocatabilityChanged -= this.OnLocatabilityChanged;
-                    this.spatialLocator = null;
-                }
-
-                this.stationaryReferenceFrame = null;
-
-                if (spatialLocator != null)
-                {
-                    // Use the SpatialLocator from the default HolographicDisplay to track the motion of the device.
-                    this.spatialLocator = spatialLocator;
-
-                    // Respond to changes in the positional tracking state.
-                    this.spatialLocator.LocatabilityChanged += this.OnLocatabilityChanged;
-
-                    // The simplest way to render world-locked holograms is to create a stationary reference frame
-                    // based on a SpatialLocator. This is roughly analogous to creating a "world" coordinate system
-                    // with the origin placed at the device's position as the app is launched.
-                    this.stationaryReferenceFrame = this.spatialLocator.CreateStationaryFrameOfReferenceAtCurrentLocation();
-                }
+                stationaryReferenceFrame = spatialLocator.CreateStationaryFrameOfReferenceAtCurrentLocation();
+            }
+            else
+            {
+                stationaryReferenceFrame = null;
             }
         }
 
@@ -638,19 +576,15 @@ namespace HololensAirplaneViewer
             
             await newView.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
             {
-                // This requires a XAML-based App.xaml entry point to work correctly
-                // which this project currently lacks as a pure D3D app.
-                // This approach will fail until an App.xaml is added.
                 var frame = new Windows.UI.Xaml.Controls.Frame();
-                // frame.Navigate(typeof(SettingsPage));
-                // Windows.UI.Xaml.Window.Current.Content = frame;
-                // Windows.UI.Xaml.Window.Current.Activate();
+                frame.Navigate(typeof(SettingsPage));
+                Windows.UI.Xaml.Window.Current.Content = frame;
+                Windows.UI.Xaml.Window.Current.Activate();
                 newViewId = ApplicationView.GetForCurrentView().Id;
             });
             
-            // await ApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
-            Debug.WriteLine("View switching not yet fully supported without App.xaml");
+            await ApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
+            Debug.WriteLine("View switching initialized.");
         }
     }
 }
-/* Appended for settings view */

@@ -8,6 +8,7 @@ namespace HololensAirplaneViewer.Content
     internal struct ModelConstantBuffer
     {
         public Matrix4x4 model;
+        public Vector4 color; // Add color field
     }
 
     /// <summary>

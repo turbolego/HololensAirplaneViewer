@@ -45,6 +45,7 @@ namespace HololensAirplaneViewer.Content
         private volatile List<AirplaneState> airplanes = new List<AirplaneState>();
 
         private Vector3 currentHeadPosition = Vector3.Zero;
+        private Vector3 currentHeadDirection = Vector3.UnitZ;
         private Vector3 worldCenter = Vector3.Zero;
         private bool worldCenterLocked;
         private float ceilingY;
@@ -117,6 +118,7 @@ namespace HololensAirplaneViewer.Content
             }
 
             currentHeadPosition = pointerPose.Head.Position;
+            currentHeadDirection = pointerPose.Head.ForwardDirection;
             if (!worldCenterLocked)
             {
                 worldCenter = currentHeadPosition;
@@ -187,8 +189,19 @@ namespace HololensAirplaneViewer.Content
                 return;
             }
 
+            RenderCursor();
             RenderAirplanes();
             RenderText();
+        }
+
+        private void RenderCursor()
+        {
+            Vector3 cursorPosition = currentHeadPosition + currentHeadDirection * 2.0f; // 2 meters in front
+            
+            // Draw a small dot as the cursor
+            // If hovered over settings, draw a larger ring/shape
+            float scale = isSettingsHovered ? 0.04f : 0.02f;
+            DrawCubeAt(cursorPosition, scale, compassHeadingDegrees);
         }
 
         public Vector3 Position => worldCenter;
@@ -225,6 +238,12 @@ namespace HololensAirplaneViewer.Content
             }
         }
 
+        private bool isSettingsHovered = false;
+        public void UpdateHoverState(bool isHovered)
+        {
+            isSettingsHovered = isHovered;
+        }
+
         private void RenderText()
         {
             var context = deviceResources.D3DDeviceContext;
@@ -249,6 +268,10 @@ namespace HololensAirplaneViewer.Content
                 var pos = ComputeAirplanePosition(plane) + new Vector3(0f, 0.08f, 0f);
                 DrawTextBillboard(plane.DisplayName, pos, AirplaneLabelSize, true, compassHeadingDegrees);
             }
+
+            // Update hover state
+            SpatialPointerPose headPose = SpatialPointerPose.TryGetAtTimestamp(stationaryReferenceFrame.CoordinateSystem, Windows.Perception.PerceptionTimestampHelper.FromHistoricalTargetTime(DateTime.Now));
+            UpdateHoverState(CheckSettingsHit(headPose));
 
             Vector3 panelCenter = worldCenter + new Vector3(0.0f, 0.15f, -1.15f);
             var lines = new List<string>();
@@ -283,6 +306,11 @@ namespace HololensAirplaneViewer.Content
             
             // Render Settings Button above the list
             settingsButtonPosition = new Vector3(panelCenter.X - 0.7f, startY + 0.15f, panelCenter.Z);
+            if (isSettingsHovered)
+            {
+                // Draw Outline (Cyan: 0.0, 1.0, 1.0)
+                DrawTextBillboard(" [ SETTINGS ] ", settingsButtonPosition, DebugTextSize * 1.3f, false, compassHeadingDegrees, new Vector4(0.0f, 1.0f, 1.0f, 1.0f));
+            }
             DrawTextBillboard(" [ SETTINGS ] ", settingsButtonPosition, DebugTextSize * 1.2f, false, compassHeadingDegrees);
 
             for (int i = 0; i < lines.Count && i < 11; i++)
@@ -331,13 +359,17 @@ namespace HololensAirplaneViewer.Content
             deviceResources.D3DDeviceContext.DrawIndexedInstanced(indexCount, 2, 0, 0, 0);
         }
 
-        private void DrawTextBillboard(string text, Vector3 origin, float size, bool faceCamera, float compassHeadingDegrees)
+        private void DrawTextBillboard(string text, Vector3 origin, float size, bool faceCamera, float compassHeadingDegrees, Vector4 color = default)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
                 return;
             }
 
+            // Default color: Amber/Yellow (1.0, 0.75, 0.2)
+            Vector4 textColor = (color == default) ? new Vector4(1.0f, 0.75f, 0.2f, 1.0f) : color;
+            modelConstantBufferData.color = textColor;
+            
             float advance = size * 0.60f;
             float start = -((text.Length - 1) * advance) * 0.5f;
 
