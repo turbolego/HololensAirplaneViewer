@@ -137,7 +137,7 @@ namespace HololensAirplaneViewer
             {
                 // Subscribe for notifications about changes to the state of the default HolographicDisplay 
                 // and its SpatialLocator.
-                HolographicSpace.IsAvailableChanged += (sender, args) => this.OnHolographicDisplayIsAvailableChanged(sender, args);
+                HolographicSpace.IsAvailableChanged += (sender, args) => this.OnHolographicDisplayIsAvailableChanged((HolographicSpace)sender, args);
             }
 
             // Acquire the current state of the default HolographicDisplay and its SpatialLocator.
