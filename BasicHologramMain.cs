@@ -137,7 +137,7 @@ namespace HololensAirplaneViewer
             {
                 // Subscribe for notifications about changes to the state of the default HolographicDisplay 
                 // and its SpatialLocator.
-                HolographicSpace.IsAvailableChanged += this.OnHolographicDisplayIsAvailableChanged;
+                HolographicSpace.IsAvailableChanged += (sender, args) => this.OnHolographicDisplayIsAvailableChanged(sender, args);
             }
 
             // Acquire the current state of the default HolographicDisplay and its SpatialLocator.
@@ -510,10 +510,10 @@ namespace HololensAirplaneViewer
             HolographicSpaceCameraAddedEventArgs args)
         {
             // Deferral helps to keep the app responsive.
-            HolographicCameraDeferral deferral = args.GetDeferral();
+            var deferral = args.GetDeferral();
 
             // Create camera-specific resources.
-            deviceResources.CreateResourcesForBackBuffer(args.Camera);
+            deviceResources.AddHolographicCamera(args.Camera);
 
             // Complete the deferral.
             deferral.Complete();
@@ -524,7 +524,7 @@ namespace HololensAirplaneViewer
             HolographicSpaceCameraRemovedEventArgs args)
         {
             // Release camera-specific resources.
-            deviceResources.ReleaseResourcesForBackBuffer(args.Camera);
+            deviceResources.RemoveHolographicCamera(args.Camera);
         }
 
         public void OnGamepadAdded(Object sender, Gamepad gamepad)
@@ -566,6 +566,11 @@ namespace HololensAirplaneViewer
             {
                 stationaryReferenceFrame = null;
             }
+
+#if DRAW_SAMPLE_CONTENT
+            // Propagate the stationary reference frame to the renderer
+            airplaneRenderer?.SetStationaryReferenceFrame(stationaryReferenceFrame);
+#endif
         }
 
         private async void OpenSettingsView()

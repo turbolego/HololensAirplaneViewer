@@ -8,6 +8,7 @@ using HololensAirplaneViewer.Models;
 using HololensAirplaneViewer.Services;
 using Windows.UI.Input.Spatial;
 using Windows.Devices.Sensors;
+using Windows.Perception.Spatial;
 
 namespace HololensAirplaneViewer.Content
 {
@@ -63,6 +64,8 @@ namespace HololensAirplaneViewer.Content
         private Vector3 settingsButtonPosition = Vector3.Zero;
         private float settingsButtonRadius = 0.2f;
 
+        private SpatialStationaryFrameOfReference stationaryReferenceFrame;
+
         // Observer's GPS fix (used for lat/lon → local dome mapping)
         private double currentLatitude = 59.91;  // ≈ Oslo fallback
         private double currentLongitude = 10.75;
@@ -108,6 +111,11 @@ namespace HololensAirplaneViewer.Content
             this.compassService = new CompassService();
             this.compassService.Initialize();
             CreateDeviceDependentResourcesAsync();
+        }
+
+        public void SetStationaryReferenceFrame(SpatialStationaryFrameOfReference frame)
+        {
+            this.stationaryReferenceFrame = frame;
         }
 
         public void PositionHologram(SpatialPointerPose pointerPose)
@@ -692,6 +700,7 @@ namespace HololensAirplaneViewer.Content
         private struct ModelConstantBuffer
         {
             public Matrix4x4 model;
+            public Vector4 color;
         }
         public bool CheckSettingsHit(SpatialPointerPose headPose)
         {
