@@ -727,5 +727,34 @@ namespace HololensAirplaneViewer.Content
             
             return distSq < (settingsButtonRadius * settingsButtonRadius);
         }
+
+        /// <summary>
+        /// Checks if the user's gaze hits any airplane marker cube.
+        /// Returns the first hit airplane, or null if none.
+        /// </summary>
+        public AirplaneState CheckAirplaneHit(SpatialPointerPose headPose)
+        {
+            if (headPose == null) return null;
+
+            Vector3 gazeDir = headPose.Head.ForwardDirection;
+            Vector3 gazeOrigin = headPose.Head.Position;
+            float hitRadiusSq = MarkerScale * MarkerScale * 4f;
+
+            for (int i = 0; i < airplanes.Count; i++)
+            {
+                var plane = airplanes[i];
+                var markerPos = ComputeAirplanePosition(plane);
+
+                Vector3 toMarker = markerPos - gazeOrigin;
+                float t = Vector3.Dot(toMarker, gazeDir);
+                if (t < 0) continue;
+
+                Vector3 closestPoint = gazeOrigin + gazeDir * t;
+                float distSq = (markerPos - closestPoint).LengthSquared();
+                if (distSq < hitRadiusSq)
+                    return plane;
+            }
+            return null;
+        }
     }
 }

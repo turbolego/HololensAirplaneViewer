@@ -15,6 +15,7 @@ using Windows.Graphics.DirectX.Direct3D11;
 using Windows.Graphics.Holographic;
 using Windows.Perception.Spatial;
 using Windows.UI.Input.Spatial;
+using Windows.UI.Popups;
 
 using HololensAirplaneViewer.Common;
 using HololensAirplaneViewer.Services;
@@ -78,6 +79,9 @@ namespace HololensAirplaneViewer
 
         // Keep track of mouse input.
         bool pointerPressed = false;
+
+        // Guard against stacking airplane info dialogs.
+        private bool _infoDialogShowing = false;
 
         // Cache whether or not the HolographicCamera.Display property can be accessed.
         bool canGetHolographicDisplayForCamera = false;
@@ -237,6 +241,14 @@ namespace HololensAirplaneViewer
                 if (pointerPressed && airplaneRenderer.CheckSettingsHit(headPose))
                 {
                     OpenSettingsView();
+                }
+                else if (pointerPressed && !_infoDialogShowing)
+                {
+                    var hitPlane = airplaneRenderer.CheckAirplaneHit(headPose);
+                    if (hitPlane != null)
+                    {
+                        ShowAirplaneInfoDialog(hitPlane);
+                    }
                 }
 
                 pointerPressed = false;
@@ -590,6 +602,51 @@ namespace HololensAirplaneViewer
             
             await ApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
             Debug.WriteLine("View switching initialized.");
+        }
+
+        private async void ShowAirplaneInfoDialog(AirplaneState plane)
+        {
+            if (_infoDialogShowing) return;
+            _infoDialogShowing = true;
+
+            try
+            {
+                float altFt = (plane.BaroAltitude ?? 0f) * 3.28084f;
+                float altM = plane.AltMeters;
+                float velKts = (plane.Velocity ?? 0f) * 1.94384f;
+
+                var detail = string.Format(
+                    "Callsign: {0}\n" +
+                    "ICAO24: {1}\n" +
+                    "Country: {2}\n" +
+                    "Altitude: {3:F0} ft ({4:F0} m)\n" +
+                    "Speed: {5:F0} kts\n" +
+                    "Track: {6}\n" +
+                    "On ground: {7}",
+                    plane.DisplayName,
+                    plane.Icao24,
+                    plane.OriginCountry,
+                    altFt, altM,
+                    velKts,
+                    plane.TrueTrack.HasValue
+                        ? string.Format("{0:F0}°", plane.TrueTrack.Value)
+                        : "N/A",
+                    plane.OnGround ? "Yes" : "No");
+
+                var dialog = new MessageDialog(detail, "Airplane Details");
+                dialog.Commands.Add(new UICommand("Close", cmd => { }));
+                dialog.DefaultCommandIndex = 0;
+                dialog.CancelCommandIndex = 0;
+                await dialog.ShowAsync();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[AirplaneInfo] Dialog error: {ex.Message}");
+            }
+            finally
+            {
+                _infoDialogShowing = false;
+            }
         }
     }
 }
