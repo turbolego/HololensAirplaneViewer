@@ -18,6 +18,7 @@ using Windows.UI.Input.Spatial;
 using Windows.UI.Popups;
 
 using HololensAirplaneViewer.Common;
+using HololensAirplaneViewer.Models;
 using HololensAirplaneViewer.Services;
 using System.Threading.Tasks;
 using Windows.Foundation;
