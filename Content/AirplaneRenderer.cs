@@ -731,6 +731,7 @@ namespace HololensAirplaneViewer.Content
         /// <summary>
         /// Checks if the user's gaze hits any airplane marker cube.
         /// Returns the first hit airplane, or null if none.
+        /// Positions are compass-rotated to match the rendered markers.
         /// </summary>
         public AirplaneState CheckAirplaneHit(SpatialPointerPose headPose)
         {
@@ -740,10 +741,21 @@ namespace HololensAirplaneViewer.Content
             Vector3 gazeOrigin = headPose.Head.Position;
             float hitRadiusSq = MarkerScale * MarkerScale * 4f;
 
-            for (int i = 0; i < airplanes.Count; i++)
+            // Snapshot volatile list to avoid ArgumentOutOfRangeException
+            var snapshot = airplanes;
+
+            // Compass rotation must match DrawCubeAt exactly
+            float headingRad = (float)(-compassHeadingDegrees * Math.PI / 180.0);
+            Matrix4x4 compassRot = Matrix4x4.CreateRotationY(headingRad);
+
+            for (int i = 0; i < snapshot.Count; i++)
             {
-                var plane = airplanes[i];
-                var markerPos = ComputeAirplanePosition(plane);
+                var plane = snapshot[i];
+                var worldPos = ComputeAirplanePosition(plane);
+
+                // Apply same compass rotation as DrawCubeAt
+                Vector3 local = worldPos - worldCenter;
+                Vector3 markerPos = Vector3.Transform(local, compassRot) + worldCenter;
 
                 Vector3 toMarker = markerPos - gazeOrigin;
                 float t = Vector3.Dot(toMarker, gazeDir);

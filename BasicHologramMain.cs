@@ -612,8 +612,8 @@ namespace HololensAirplaneViewer
 
             try
             {
-                float altFt = (plane.BaroAltitude ?? 0f) * 3.28084f;
                 float altM = plane.AltMeters;
+                float altFt = altM * 3.28084f;
                 float velKts = (plane.Velocity ?? 0f) * 1.94384f;
 
                 var detail = string.Format(
