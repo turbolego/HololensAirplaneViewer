@@ -268,6 +268,7 @@ namespace HololensAirplaneViewer.Content
                 context.GeometryShader.SetShader(textGeometryShader, null, 0);
             }
             context.PixelShader.SetShader(textPixelShader, null, 0);
+            context.PixelShader.SetConstantBuffers(0, modelConstantBuffer);
             context.PixelShader.SetShaderResource(0, glyphAtlasSrv);
             context.PixelShader.SetSampler(0, textSampler);
 
