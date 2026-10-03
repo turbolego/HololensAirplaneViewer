@@ -40,9 +40,13 @@ namespace HololensAirplaneViewer.Services
                 }
 
                 hasOverride = false;
-                // Preserve last manual coordinates so the renderer does not
-                // temporarily display 0,0 while waiting for the next automatic fix.
-                // The generation bump signals the renderer to resume automatic mode.
+                // Reset coordinates to a neutral state. This prevents the renderer
+                // from briefly showing stale manual coordinates (or 0,0) after a
+                // clear operation while still signalling a generation change.
+                latitude = 0.0;
+                longitude = 0.0;
+                // Increment generation to trigger an immediate retry in the
+                // renderer when it detects the mismatch.
                 generation++;
             }
         }
