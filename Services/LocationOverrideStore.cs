@@ -26,6 +26,31 @@ namespace HololensAirplaneViewer.Services
             }
         }
 
+        /// <summary>
+        /// Drops the manual override so the app returns to the automatic
+        /// (device supplied) location on the next update.
+        /// </summary>
+        public static void Clear()
+        {
+            lock (SyncRoot)
+            {
+                if (!hasOverride)
+                {
+                    return;
+                }
+
+                hasOverride = false;
+                // Reset coordinates to a neutral state. This prevents the renderer
+                // from briefly showing stale manual coordinates (or 0,0) after a
+                // clear operation while still signalling a generation change.
+                latitude = 0.0;
+                longitude = 0.0;
+                // Increment generation to trigger an immediate retry in the
+                // renderer when it detects the mismatch.
+                generation++;
+            }
+        }
+
         public static bool TryGet(out double currentLatitude, out double currentLongitude)
         {
             lock (SyncRoot)

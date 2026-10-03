@@ -1,22 +1,36 @@
-# Settings Input Implementation Plan
+# Settings Input Implementation Notes
 
-## Research & Strategy
-The application is a native UWP HoloLens 1 app using Direct3D 11 with SharpDX. There is no Unity3D/MRTK UI system. To provide a settings modal/popup for manual GPS address entry:
+## Constraint
+The app is a native UWP HoloLens app whose entry point is the DirectX
+`AppView` (`IFrameworkView`) — the XAML `App` object is never created. That
+means the immersive holographic view cannot host XAML pages, `ContentDialog`,
+or `TextBox` controls, and `CoreApplication.CreateNewView()` +
+`Window.Current.Content = ...` fails at runtime. Free text entry would require
+implementing TSF/UI Automation text providers on top of `CoreTextEditContext`,
+which is out of scope.
 
-1.  **Architecture:** We must use **UWP XAML/D3D Interop**.
-2.  **View Switching:** The application cannot render the virtual keyboard over the 3D view. We must use `CoreApplicationViewSwitcher` to transition from the volumetric (D3D) view to a 2D XAML view when input is requested.
-3.  **Keyboard Input:** In the 2D XAML view, we will use a standard `TextBox` control, which automatically triggers the system-wide virtual keyboard on HoloLens.
-4.  **Data Flow:**
-    *   Volumetric view -> Trigger input -> Transition to XAML Page.
-    *   XAML Page -> User types in `TextBox` -> Capture result.
-    *   XAML Page -> Transition back to Volumetric view -> Pass result to `AirplaneService`.
+`Windows.UI.Popups.MessageDialog`, however, is rendered by the shell over the
+immersive view and already works (the airplane information modal uses it).
 
-## Implementation Plan
-1.  **Project Modification:** Add a new XAML page (`SettingsPage.xaml`) to the project.
-2.  **View Switching Logic:** Implement `CoreApplicationViewSwitcher` in the main app lifecycle (`BasicHologramMain.cs` or similar) to handle the transition.
-3.  **UI/UX:** Define a 3D button in the volumetric view (custom rendered) to trigger the input switch.
-4.  **Data Integration:** Create a communication bridge to pass the entered address back to the `GeolocationService` or `AirplaneService`.
+## Implemented design
+Air-tapping the `[ SETTINGS ]` hologram opens a `MessageDialog` modal — the
+same modal type as the airplane information dialog. `MessageDialog` supports
+only command buttons (max 3), so the flow is a small chain of dialogs:
 
-## Known Constraints
-- This requires low-level UWP/Direct3D interop development.
-- The volumetric renderer must be paused or handled correctly during the transition to the 2D view.
+1. **Location Settings** — shows the active location and whether it is manual
+   or automatic. Commands: `Pick a city`, `Adjust coordinates`, `Close`.
+2. **Pick a City** — cycles through `LocationSettingsModel.Presets`, whose
+   first entry restores the automatic (device supplied) location.
+   Commands: `Use this location`, `Next`, `Back`.
+3. **Adjust Coordinates** — pick `Latitude` or `Longitude`, then a step size
+   (10 deg / 1 deg / 0.1 deg), then nudge with `+`/`-`. `Apply` stores the result.
+
+## Code map
+- `Content/AirplaneRenderer.cs` — draws the button and hit-tests the gaze ray.
+  The hit sphere is compass-rotated exactly like the drawn label.
+- `BasicHologramMain.cs` — runs the modal chain (`OpenSettingsView`).
+- `Services/LocationSettingsModel.cs` — presets, coordinate stepping, and
+  formatting (pure logic, unit tested).
+- `Services/LocationOverrideStore.cs` — thread-safe bridge to the renderer;
+  `Set` applies a manual location, `Clear` returns to the device location, and
+  the generation counter invalidates in-flight OpenSky fetches.

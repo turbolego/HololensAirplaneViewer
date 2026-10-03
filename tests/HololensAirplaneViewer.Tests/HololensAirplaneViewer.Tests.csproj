@@ -28,6 +28,8 @@
     <Compile Include="..\..\Services\AirplaneSelection.cs" Link="AirplaneSelection.cs" />
     <Compile Include="..\..\Models\AirplaneState.cs" Link="AirplaneState.cs" />
     <Compile Include="..\..\Utilities\GeohashConverter.cs" Link="GeohashConverter.cs" />
+    <Compile Include="..\..\Services\LocationOverrideStore.cs" Link="LocationOverrideStore.cs" />
+    <Compile Include="..\..\Services\LocationSettingsModel.cs" Link="LocationSettingsModel.cs" />
   </ItemGroup>
 
 </Project>

@@ -23,9 +23,6 @@ using HololensAirplaneViewer.Services;
 using System.Threading.Tasks;
 using Windows.Foundation;
 using System.Collections.Generic;
-using Windows.UI.Core;
-using Windows.UI.ViewManagement;
-using Windows.ApplicationModel.Core;
 
 #if DRAW_SAMPLE_CONTENT
 using HololensAirplaneViewer.Content;
@@ -83,7 +80,7 @@ namespace HololensAirplaneViewer
 
         // Guard against stacking airplane info dialogs.
         private bool _infoDialogShowing = false;
-        private bool _settingsViewOpening = false;
+        private bool _settingsDialogShowing = false;
 
         // Cache whether or not the HolographicCamera.Display property can be accessed.
         bool canGetHolographicDisplayForCamera = false;
@@ -240,11 +237,12 @@ namespace HololensAirplaneViewer
                 SpatialPointerPose headPose = SpatialPointerPose.TryGetAtTimestamp(
                     stationaryReferenceFrame.CoordinateSystem, prediction.Timestamp);
 
-                if (pointerPressed && airplaneRenderer.CheckSettingsHit(headPose))
+                if (pointerPressed && !_settingsDialogShowing && !_infoDialogShowing
+                    && airplaneRenderer.CheckSettingsHit(headPose))
                 {
                     OpenSettingsView();
                 }
-                else if (pointerPressed && !_infoDialogShowing)
+                else if (pointerPressed && !_infoDialogShowing && !_settingsDialogShowing)
                 {
                     var hitPlane = airplaneRenderer.CheckAirplaneHit(headPose);
                     if (hitPlane != null)
@@ -589,39 +587,256 @@ namespace HololensAirplaneViewer
 
         private async void OpenSettingsView()
         {
-            if (_settingsViewOpening)
+            if (_settingsDialogShowing || _infoDialogShowing)
             {
                 return;
             }
 
-            _settingsViewOpening = true;
+            _settingsDialogShowing = true;
 
-            // Use ApplicationViewSwitcher to switch to a new XAML view
             try
             {
-                CoreApplicationView newView = CoreApplication.CreateNewView();
-                int newViewId = 0;
-
-                await newView.Dispatcher.RunAsync(CoreDispatcherPriority.Normal, () =>
-                {
-                    var frame = new Windows.UI.Xaml.Controls.Frame();
-                    frame.Navigate(typeof(SettingsPage));
-                    Windows.UI.Xaml.Window.Current.Content = frame;
-                    Windows.UI.Xaml.Window.Current.Activate();
-                    newViewId = ApplicationView.GetForCurrentView().Id;
-                });
-
-                await ApplicationViewSwitcher.TryShowAsStandaloneAsync(newViewId);
-                Debug.WriteLine("Location settings view initialized.");
+                await RunLocationSettingsAsync();
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[Settings] View error: {ex.Message}");
+                Debug.WriteLine($"[Settings] Dialog error: {ex.Message}");
             }
             finally
             {
-                _settingsViewOpening = false;
+                _settingsDialogShowing = false;
             }
+        }
+
+        /// <summary>
+        /// Drives the location settings modal. The immersive holographic view
+        /// cannot host XAML text boxes, so the location is changed with
+        /// MessageDialog command buttons (the same modal type used by the
+        /// airplane information dialog).
+        /// </summary>
+        private async Task RunLocationSettingsAsync()
+        {
+            double latitude;
+            double longitude;
+            bool manual = LocationOverrideStore.TryGet(out latitude, out longitude);
+            bool hasFix = manual || airplaneRenderer.HasObserverFix;
+            if (!manual)
+            {
+                latitude = airplaneRenderer.CurrentLatitude;
+                longitude = airplaneRenderer.CurrentLongitude;
+            }
+
+            while (true)
+            {
+                string status = string.Format(
+                    "{0}\n{1}",
+                    manual ? "Manual location" : "Automatic (device) location",
+                    LocationSettingsModel.FormatCoordinates(latitude, longitude));
+
+                bool showAdjust = hasFix;
+                int choice;
+                if (showAdjust)
+                {
+                    choice = await ShowChoiceDialogAsync(
+                        status,
+                        "Location Settings",
+                        "Pick a city",
+                        "Adjust coordinates",
+                        "Close");
+                }
+                else
+                {
+                    // No real fix yet - avoid presenting zero/stale coordinates for adjustment.
+                    string noFixStatus = string.Format(
+                        "{0}\\n{1}\\n\\nWaiting for device location…",
+                        manual ? "Manual location" : "Automatic (device) location",
+                        LocationSettingsModel.FormatCoordinates(latitude, longitude));
+                    choice = await ShowChoiceDialogAsync(
+                        noFixStatus,
+                        "Location Settings",
+                        "Pick a city",
+                        "Close");
+                }
+
+                if (choice == 0)
+                {
+                    await PickPresetLocationAsync();
+                }
+                else if (choice == 1 && showAdjust)
+                {
+                    await AdjustCoordinatesAsync(latitude, longitude);
+                }
+                else
+                {
+                    return;
+                }
+
+                manual = LocationOverrideStore.TryGet(out latitude, out longitude);
+                hasFix = manual || airplaneRenderer.HasObserverFix;
+                if (!manual)
+                {
+                    latitude = airplaneRenderer.CurrentLatitude;
+                    longitude = airplaneRenderer.CurrentLongitude;
+                }
+            }
+        }
+
+        private async Task PickPresetLocationAsync()
+        {
+            var presets = LocationSettingsModel.Presets;
+            int index = 0;
+
+            while (true)
+            {
+                var preset = presets[index];
+                string detail = preset.IsDeviceLocation
+                    ? "Use the location reported by the device."
+                    : LocationSettingsModel.FormatCoordinates(preset.Latitude, preset.Longitude);
+
+                int choice = await ShowChoiceDialogAsync(
+                    string.Format("{0}\n{1}", preset.Name, detail),
+                    string.Format("Pick a City ({0}/{1})", index + 1, presets.Count),
+                    "Use this location",
+                    "Next",
+                    "Back");
+
+                if (choice == 0)
+                {
+                    if (preset.IsDeviceLocation)
+                    {
+                        LocationOverrideStore.Clear();
+                    }
+                    else
+                    {
+                        LocationOverrideStore.Set(preset.Latitude, preset.Longitude);
+                    }
+                    return;
+                }
+
+                if (choice == 1)
+                {
+                    index = LocationSettingsModel.NextPresetIndex(index);
+                    continue;
+                }
+
+                return;
+            }
+        }
+
+        private async Task AdjustCoordinatesAsync(double latitude, double longitude)
+        {
+            while (true)
+            {
+                int choice = await ShowChoiceDialogAsync(
+                    LocationSettingsModel.FormatCoordinates(latitude, longitude),
+                    "Adjust Coordinates",
+                    "Latitude",
+                    "Longitude",
+                    "Apply");
+
+                if (choice == 2)
+                {
+                    LocationOverrideStore.Set(latitude, longitude);
+                    return;
+                }
+
+                if (choice < 0)
+                {
+                    return;
+                }
+
+                bool editingLatitude = choice == 0;
+                double step = await PickStepAsync();
+                if (step <= 0.0)
+                {
+                    continue;
+                }
+
+                if (editingLatitude)
+                {
+                    latitude = await NudgeCoordinateAsync(true, step, latitude, longitude);
+                }
+                else
+                {
+                    longitude = await NudgeCoordinateAsync(false, step, latitude, longitude);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Asks for the step size used when nudging a coordinate.
+        /// Returns 0 when the user dismissed the dialog.
+        /// </summary>
+        private async Task<double> PickStepAsync()
+        {
+            var steps = LocationSettingsModel.StepSizesDegrees;
+            int choice = await ShowChoiceDialogAsync(
+                "How far should each step move the location?",
+                "Step Size",
+                LocationSettingsModel.FormatStep(steps[0]),
+                LocationSettingsModel.FormatStep(steps[1]),
+                LocationSettingsModel.FormatStep(steps[2]));
+
+            return choice < 0 ? 0.0 : steps[choice];
+        }
+
+        /// <summary>
+        /// Repeatedly nudges one coordinate and returns its final value.
+        /// </summary>
+        private async Task<double> NudgeCoordinateAsync(
+            bool editingLatitude,
+            double step,
+            double latitude,
+            double longitude)
+        {
+            string label = editingLatitude ? "Latitude" : "Longitude";
+
+            while (true)
+            {
+                int choice = await ShowChoiceDialogAsync(
+                    LocationSettingsModel.FormatCoordinates(latitude, longitude),
+                    string.Format("{0} +/- {1}", label, LocationSettingsModel.FormatStep(step)),
+                    string.Format("+ {0}", LocationSettingsModel.FormatStep(step)),
+                    string.Format("- {0}", LocationSettingsModel.FormatStep(step)),
+                    "Done");
+
+                if (choice != 0 && choice != 1)
+                {
+                    return editingLatitude ? latitude : longitude;
+                }
+
+                double delta = choice == 0 ? step : -step;
+                if (editingLatitude)
+                {
+                    latitude = LocationSettingsModel.AdjustLatitude(latitude, delta);
+                }
+                else
+                {
+                    longitude = LocationSettingsModel.AdjustLongitude(longitude, delta);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Shows a MessageDialog with up to three command buttons (the platform
+        /// maximum) and returns the index of the chosen command, or -1 if the
+        /// dialog was dismissed without a command.
+        /// </summary>
+        private static async Task<int> ShowChoiceDialogAsync(string content, string title, params string[] labels)
+        {
+            int selected = -1;
+            var dialog = new MessageDialog(content, title);
+
+            for (int i = 0; i < labels.Length; i++)
+            {
+                int index = i;
+                dialog.Commands.Add(new UICommand(labels[i], cmd => { selected = index; }));
+            }
+
+            dialog.DefaultCommandIndex = 0;
+
+            await dialog.ShowAsync();
+            return selected;
         }
 
         private async void ShowAirplaneInfoDialog(AirplaneState plane)
