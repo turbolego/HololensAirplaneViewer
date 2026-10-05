@@ -28,7 +28,8 @@ only command buttons (max 3), so the flow is a small chain of dialogs:
 4. **Nearby airports and geohash examples** — nearby airports are ranked by
    great-circle distance from the current coordinates using the bundled
    `Services/airports.tsv` catalog. Geohash choices are sample values; neither
-   flow accepts typed text.
+   flow accepts typed text. The location menu is split across dialogs to stay
+   within `MessageDialog`'s three-command limit.
 
 ## Code map
 - `Content/AirplaneRenderer.cs` — draws the button and hit-tests the gaze ray.

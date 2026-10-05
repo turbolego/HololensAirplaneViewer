@@ -690,11 +690,8 @@ namespace HololensAirplaneViewer
                     LocationSettingsModel.FormatCoordinates(latitude, longitude),
                     "Enter Location",
                     "Nearby airports",
-                    "Adjust coordinates",
-                    "Sample geohash",
+                    "More location options",
                     "Back");
-                if (choice == 3)
-                    return;
                 if (choice == 0)
                 {
                     await PickNearbyAirportAsync(latitude, longitude);
@@ -702,14 +699,26 @@ namespace HololensAirplaneViewer
                 }
                 if (choice == 1)
                 {
-                    await AdjustCoordinatesAsync(latitude, longitude);
-                    return;
+                    int locationChoice = await ShowChoiceDialogAsync(
+                        "Choose how to set the location.",
+                        "Location Options",
+                        "Adjust coordinates",
+                        "Sample geohash",
+                        "Back");
+                    if (locationChoice == 0)
+                    {
+                        await AdjustCoordinatesAsync(latitude, longitude);
+                        return;
+                    }
+                    if (locationChoice == 1)
+                    {
+                        await PickGeohashExampleAsync(latitude, longitude);
+                        return;
+                    }
+                    continue;
                 }
-                if (choice == 2)
-                {
-                    await PickGeohashExampleAsync(latitude, longitude);
-                    return;
-                }
+
+                return;
             }
         }
 
@@ -962,6 +971,11 @@ namespace HololensAirplaneViewer
         /// </summary>
         private static async Task<int> ShowChoiceDialogAsync(string content, string title, params string[] labels)
         {
+            if (labels.Length > 3)
+            {
+                throw new ArgumentOutOfRangeException(nameof(labels), "MessageDialog supports at most three commands.");
+            }
+
             int selected = -1;
             var dialog = new MessageDialog(content, title);
 
