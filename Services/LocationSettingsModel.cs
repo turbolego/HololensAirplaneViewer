@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace HololensAirplaneViewer.Services
 {
@@ -35,9 +36,9 @@ namespace HololensAirplaneViewer.Services
         }
     }
 
-    public sealed class AirportExample
+    public sealed class AirportLocation
     {
-        public AirportExample(string iata, string name, double latitude, double longitude)
+        public AirportLocation(string iata, string name, double latitude, double longitude)
         {
             Iata = iata;
             Name = name;
@@ -83,13 +84,69 @@ namespace HololensAirplaneViewer.Services
             get { return PresetList; }
         }
 
-        /// <summary>Airport examples in Norway (IATA code, name, lat, lon).</summary>
-        public static readonly AirportExample[] NorwegianAirportExamples =
+        /// <summary>
+        /// Parses the bundled tab-separated OurAirports catalog.
+        /// </summary>
+        public static AirportLocation[] ParseAirportCatalog(IEnumerable<string> lines)
         {
-            new AirportExample("OSL", "Oslo Airport Gardermoen", 60.1939, 11.1004),
-            new AirportExample("BGO", "Bergen Airport Flesland", 60.2934, 5.2192),
-            new AirportExample("TRD", "Trondheim Airport Værnes", 63.4578, 10.9241),
-        };
+            if (lines == null) throw new ArgumentNullException(nameof(lines));
+
+            var airports = new List<AirportLocation>();
+            foreach (string line in lines)
+            {
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#", StringComparison.Ordinal))
+                    continue;
+
+                string[] fields = line.Split('\t');
+                if (fields.Length == 4 && fields[0] == "iata")
+                    continue;
+                if (fields.Length != 4)
+                    throw new FormatException("An airport catalog row must contain four tab-separated fields.");
+
+                double latitude;
+                double longitude;
+                if (!double.TryParse(fields[2], NumberStyles.Float, CultureInfo.InvariantCulture, out latitude) ||
+                    !double.TryParse(fields[3], NumberStyles.Float, CultureInfo.InvariantCulture, out longitude) ||
+                    latitude < -90.0 || latitude > 90.0 ||
+                    longitude < -180.0 || longitude > 180.0 ||
+                    string.IsNullOrWhiteSpace(fields[0]) ||
+                    string.IsNullOrWhiteSpace(fields[1]))
+                {
+                    throw new FormatException("An airport catalog row contains invalid airport data.");
+                }
+
+                airports.Add(new AirportLocation(fields[0], fields[1], latitude, longitude));
+            }
+
+            return airports.ToArray();
+        }
+
+        /// <summary>Returns the three catalog airports nearest to the supplied coordinates.</summary>
+        public static AirportLocation[] FindThreeClosestAirports(
+            IEnumerable<AirportLocation> airports,
+            double latitude,
+            double longitude)
+        {
+            if (airports == null) throw new ArgumentNullException(nameof(airports));
+
+            return airports
+                .OrderBy(airport => HaversineMeters(latitude, longitude, airport.Latitude, airport.Longitude))
+                .Take(3)
+                .ToArray();
+        }
+
+        private static double HaversineMeters(double lat1, double lon1, double lat2, double lon2)
+        {
+            const double earthRadiusMeters = 6371000.0;
+            double phi1 = lat1 * Math.PI / 180.0;
+            double phi2 = lat2 * Math.PI / 180.0;
+            double deltaPhi = (lat2 - lat1) * Math.PI / 180.0;
+            double deltaLambda = (lon2 - lon1) * Math.PI / 180.0;
+            double a = Math.Sin(deltaPhi / 2.0) * Math.Sin(deltaPhi / 2.0) +
+                       Math.Cos(phi1) * Math.Cos(phi2) *
+                       Math.Sin(deltaLambda / 2.0) * Math.Sin(deltaLambda / 2.0);
+            return earthRadiusMeters * 2.0 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1.0 - a));
+        }
 
         /// <summary>Cycles to the next preset, wrapping at the end of the list.</summary>
         public static int NextPresetIndex(int index)

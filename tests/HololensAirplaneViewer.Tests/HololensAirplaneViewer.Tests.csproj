@@ -30,6 +30,7 @@
     <Compile Include="..\..\Utilities\GeohashConverter.cs" Link="GeohashConverter.cs" />
     <Compile Include="..\..\Services\LocationOverrideStore.cs" Link="LocationOverrideStore.cs" />
     <Compile Include="..\..\Services\LocationSettingsModel.cs" Link="LocationSettingsModel.cs" />
+    <None Include="..\..\Services\airports.tsv" Link="airports.tsv" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

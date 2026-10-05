@@ -1,3 +1,4 @@
+using System.IO;
 using System.Linq;
 using HololensAirplaneViewer.Services;
 using Xunit;
@@ -104,9 +105,48 @@ namespace HololensAirplaneViewer.Tests
         }
 
         [Fact]
-        public void NorwegianAirportExamples_AreExplicitlyRegional()
+        public void ParseAirportCatalog_ReadsBundledTabSeparatedRecords()
         {
-            Assert.Equal(new[] { "OSL", "BGO", "TRD" }, LocationSettingsModel.NorwegianAirportExamples.Select(a => a.Iata));
+            var airports = LocationSettingsModel.ParseAirportCatalog(new[]
+            {
+                "# Airport catalog",
+                "iata\tname\tlatitude\tlongitude",
+                "JFK\tJohn F Kennedy International\t40.6413\t-73.7781",
+                "SYD\tSydney Airport\t-33.9461\t151.1772"
+            });
+
+            Assert.Equal(new[] { "JFK", "SYD" }, airports.Select(airport => airport.Iata));
+            Assert.Equal(-33.9461, airports[1].Latitude);
+        }
+
+        [Fact]
+        public void BundledAirportCatalog_ContainsAirportsAcrossContinents()
+        {
+            var airports = LocationSettingsModel.ParseAirportCatalog(
+                File.ReadAllLines(Path.Combine(System.AppContext.BaseDirectory, "airports.tsv")));
+            var airportCodes = airports.Select(airport => airport.Iata).ToArray();
+
+            Assert.True(airports.Length > 8000);
+            Assert.Contains("JFK", airportCodes);
+            Assert.Contains("LHR", airportCodes);
+            Assert.Contains("SYD", airportCodes);
+        }
+
+        [Fact]
+        public void FindThreeClosestAirports_RanksWorldwideCatalogByDistance()
+        {
+            var airports = new[]
+            {
+                new AirportLocation("JFK", "John F Kennedy International", 40.6413, -73.7781),
+                new AirportLocation("LGA", "LaGuardia Airport", 40.7769, -73.8740),
+                new AirportLocation("EWR", "Newark Liberty International", 40.6895, -74.1745),
+                new AirportLocation("BOS", "Boston Logan International", 42.3656, -71.0096),
+                new AirportLocation("SYD", "Sydney Airport", -33.9461, 151.1772)
+            };
+
+            var nearest = LocationSettingsModel.FindThreeClosestAirports(airports, 40.7580, -73.9855);
+
+            Assert.Equal(new[] { "LGA", "EWR", "JFK" }, nearest.Select(airport => airport.Iata));
         }
 
         [Fact]

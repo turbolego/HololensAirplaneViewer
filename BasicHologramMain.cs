@@ -16,6 +16,7 @@ using Windows.Graphics.Holographic;
 using Windows.Perception.Spatial;
 using Windows.UI.Input.Spatial;
 using Windows.UI.Popups;
+using Windows.Storage;
 
 using HololensAirplaneViewer.Common;
 using HololensAirplaneViewer.Models;
@@ -688,7 +689,7 @@ namespace HololensAirplaneViewer
                 int choice = await ShowChoiceDialogAsync(
                     LocationSettingsModel.FormatCoordinates(latitude, longitude),
                     "Enter Location",
-                    "Norwegian airport examples",
+                    "Nearby airports",
                     "Adjust coordinates",
                     "Sample geohash",
                     "Back");
@@ -696,7 +697,7 @@ namespace HololensAirplaneViewer
                     return;
                 if (choice == 0)
                 {
-                    await PickNorwegianAirportExampleAsync();
+                    await PickNearbyAirportAsync(latitude, longitude);
                     return;
                 }
                 if (choice == 1)
@@ -783,9 +784,37 @@ namespace HololensAirplaneViewer
             }
         }
 
-        private async Task PickNorwegianAirportExampleAsync()
+        private async Task PickNearbyAirportAsync(double latitude, double longitude)
         {
-            var airports = LocationSettingsModel.NorwegianAirportExamples;
+            AirportLocation[] airports;
+            try
+            {
+                StorageFile catalogFile = await StorageFile.GetFileFromApplicationUriAsync(
+                    new Uri("ms-appx:///Services/airports.tsv"));
+                IList<string> catalogLines = await FileIO.ReadLinesAsync(catalogFile);
+                airports = LocationSettingsModel.FindThreeClosestAirports(
+                    LocationSettingsModel.ParseAirportCatalog(catalogLines),
+                    latitude,
+                    longitude);
+            }
+            catch (Exception exception)
+            {
+                await ShowChoiceDialogAsync(
+                    string.Format("Airport data could not be loaded: {0}", exception.Message),
+                    "Nearby Airports",
+                    "OK");
+                return;
+            }
+
+            if (airports.Length == 0)
+            {
+                await ShowChoiceDialogAsync(
+                    "No airports are available in the airport catalog.",
+                    "Nearby Airports",
+                    "OK");
+                return;
+            }
+
             int index = 0;
             while (true)
             {
@@ -793,7 +822,7 @@ namespace HololensAirplaneViewer
                 string detail = string.Format("{0} {1}\n{2}", a.Iata, a.Name, LocationSettingsModel.FormatCoordinates(a.Latitude, a.Longitude));
                 int choice = await ShowChoiceDialogAsync(
                     detail,
-                    string.Format("Norwegian Airport Examples ({0}/{1})", index + 1, airports.Length),
+                    string.Format("Nearby Airports ({0}/{1})", index + 1, airports.Length),
                     "Use this airport",
                     "Next",
                     "Back");
