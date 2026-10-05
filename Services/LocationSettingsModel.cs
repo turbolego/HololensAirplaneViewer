@@ -35,6 +35,22 @@ namespace HololensAirplaneViewer.Services
         }
     }
 
+    public sealed class AirportExample
+    {
+        public AirportExample(string iata, string name, double latitude, double longitude)
+        {
+            Iata = iata;
+            Name = name;
+            Latitude = latitude;
+            Longitude = longitude;
+        }
+
+        public string Iata { get; private set; }
+        public string Name { get; private set; }
+        public double Latitude { get; private set; }
+        public double Longitude { get; private set; }
+    }
+
     /// <summary>
     /// Pure (UWP-free) logic behind the holographic location settings modal.
     /// The modal is built from <see cref="Windows.UI.Popups.MessageDialog"/>
@@ -68,11 +84,11 @@ namespace HololensAirplaneViewer.Services
         }
 
         /// <summary>Airport examples in Norway (IATA code, name, lat, lon).</summary>
-        public static readonly (string iata, string name, double lat, double lon)[] NorwegianAirportExamples =
+        public static readonly AirportExample[] NorwegianAirportExamples =
         {
-            ("OSL", "Oslo Airport Gardermoen", 60.1939, 11.1004),
-            ("BGO", "Bergen Airport Flesland", 60.2934, 5.2192),
-            ("TRD", "Trondheim Airport Værnes", 63.4578, 10.9241),
+            new AirportExample("OSL", "Oslo Airport Gardermoen", 60.1939, 11.1004),
+            new AirportExample("BGO", "Bergen Airport Flesland", 60.2934, 5.2192),
+            new AirportExample("TRD", "Trondheim Airport Værnes", 63.4578, 10.9241),
         };
 
         /// <summary>Cycles to the next preset, wrapping at the end of the list.</summary>

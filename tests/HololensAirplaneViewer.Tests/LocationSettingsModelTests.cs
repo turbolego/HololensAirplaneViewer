@@ -106,7 +106,7 @@ namespace HololensAirplaneViewer.Tests
         [Fact]
         public void NorwegianAirportExamples_AreExplicitlyRegional()
         {
-            Assert.Equal(new[] { "OSL", "BGO", "TRD" }, LocationSettingsModel.NorwegianAirportExamples.Select(a => a.iata));
+            Assert.Equal(new[] { "OSL", "BGO", "TRD" }, LocationSettingsModel.NorwegianAirportExamples.Select(a => a.Iata));
         }
 
         [Fact]

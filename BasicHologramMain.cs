@@ -790,7 +790,7 @@ namespace HololensAirplaneViewer
             while (true)
             {
                 var a = airports[index];
-                string detail = string.Format("{0} {1}\n{2}", a.iata, a.name, LocationSettingsModel.FormatCoordinates(a.lat, a.lon));
+                string detail = string.Format("{0} {1}\n{2}", a.Iata, a.Name, LocationSettingsModel.FormatCoordinates(a.Latitude, a.Longitude));
                 int choice = await ShowChoiceDialogAsync(
                     detail,
                     string.Format("Norwegian Airport Examples ({0}/{1})", index + 1, airports.Length),
@@ -800,7 +800,7 @@ namespace HololensAirplaneViewer
 
                 if (choice == 0)
                 {
-                    LocationOverrideStore.Set(a.lat, a.lon);
+                    LocationOverrideStore.Set(a.Latitude, a.Longitude);
                     return;
                 }
                 if (choice == 1)
