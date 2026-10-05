@@ -216,8 +216,10 @@ namespace HololensAirplaneViewer.Services
             if (parts.Length != 2) return false;
             if (!double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out latitude)) return false;
             if (!double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out longitude)) return false;
-            if (latitude < -90 || latitude > 90) return false;
-            if (longitude < -180 || longitude > 180) return false;
+            if (double.IsNaN(latitude) || double.IsInfinity(latitude) ||
+                double.IsNaN(longitude) || double.IsInfinity(longitude) ||
+                latitude < -90 || latitude > 90 ||
+                longitude < -180 || longitude > 180) return false;
             return true;
         }
 
