@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Linq;
 
 namespace HololensAirplaneViewer.Services
 {
@@ -45,7 +44,7 @@ namespace HololensAirplaneViewer.Services
     public static class LocationSettingsModel
     {
         /// <summary>Step sizes, in degrees, offered when nudging a coordinate.</summary>
-        public static readonly double[] StepSizesDegrees = { 10.0, 1.0, 0.1 };
+        public static readonly double[] StepSizesDegrees = { 10.0, 1.0, 0.1, 0.01, 0.001, 0.0001 };
 
         private static readonly LocationPreset[] PresetList =
         {
@@ -68,8 +67,8 @@ namespace HololensAirplaneViewer.Services
             get { return PresetList; }
         }
 
-        /// <summary>Three major airports used for nearby-airport demo (IATA code, name, lat, lon).</summary>
-        public static readonly (string iata, string name, double lat, double lon)[] NearbyAirportsDemo =
+        /// <summary>Airport examples in Norway (IATA code, name, lat, lon).</summary>
+        public static readonly (string iata, string name, double lat, double lon)[] NorwegianAirportExamples =
         {
             ("OSL", "Oslo Airport Gardermoen", 60.1939, 11.1004),
             ("BGO", "Bergen Airport Flesland", 60.2934, 5.2192),
@@ -129,7 +128,7 @@ namespace HololensAirplaneViewer.Services
 
         public static string FormatStep(double stepDegrees)
         {
-            return string.Format(CultureInfo.InvariantCulture, "{0:0.###}°", stepDegrees);
+            return string.Format(CultureInfo.InvariantCulture, "{0:0.####}°", stepDegrees);
         }
 
         /// <summary>
@@ -141,7 +140,7 @@ namespace HololensAirplaneViewer.Services
             latitude = 0; longitude = 0;
             if (string.IsNullOrWhiteSpace(input)) return false;
             var parts = input.Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 2) return false;
+            if (parts.Length != 2) return false;
             if (!double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out latitude)) return false;
             if (!double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out longitude)) return false;
             if (latitude < -90 || latitude > 90) return false;
@@ -169,40 +168,5 @@ namespace HololensAirplaneViewer.Services
             }
         }
 
-        /// <summary>
-        /// Finds up to three nearby airports from a small demo list using great-circle distance.
-        /// In production this would query an airport database; here we return the 3 closest from NearbyAirportsDemo.
-        /// </summary>
-        public static (string iata, string name, double lat, double lon)[] FindThreeClosestAirports(double latitude, double longitude)
-        {
-            var list = NearbyAirportsDemo
-                .Select(a => new
-                {
-                    a.iata,
-                    a.name,
-                    a.lat,
-                    a.lon,
-                    dist = HaversineMeters(latitude, longitude, a.lat, a.lon)
-                })
-                .OrderBy(x => x.dist)
-                .Take(3)
-                .Select(x => (x.iata, x.name, x.lat, x.lon))
-                .ToArray();
-            return list;
-        }
-
-        private static double HaversineMeters(double lat1, double lon1, double lat2, double lon2)
-        {
-            const double R = 6371000.0;
-            double φ1 = lat1 * Math.PI / 180.0;
-            double φ2 = lat2 * Math.PI / 180.0;
-            double Δφ = (lat2 - lat1) * Math.PI / 180.0;
-            double Δλ = (lon2 - lon1) * Math.PI / 180.0;
-            double a = Math.Sin(Δφ / 2) * Math.Sin(Δφ / 2) +
-                       Math.Cos(φ1) * Math.Cos(φ2) *
-                       Math.Sin(Δλ / 2) * Math.Sin(Δλ / 2);
-            double c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-            return R * c;
-        }
     }
 }

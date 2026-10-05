@@ -23,7 +23,11 @@ only command buttons (max 3), so the flow is a small chain of dialogs:
    first entry restores the automatic (device supplied) location.
    Commands: `Use this location`, `Next`, `Back`.
 3. **Adjust Coordinates** — pick `Latitude` or `Longitude`, then a step size
-   (10 deg / 1 deg / 0.1 deg), then nudge with `+`/`-`. `Apply` stores the result.
+   (10 deg down to 0.0001 deg), then nudge with `+`/`-`. `Apply` stores the
+   result. This is adjustment by steps, not free-text coordinate entry.
+4. **Airport and geohash examples** — the airport choices are explicitly
+   labeled Norwegian examples, not airports nearby the current location.
+   Geohash choices are sample values; neither flow accepts typed text.
 
 ## Code map
 - `Content/AirplaneRenderer.cs` — draws the button and hit-tests the gaze ray.

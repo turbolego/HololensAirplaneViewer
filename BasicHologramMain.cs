@@ -663,7 +663,7 @@ namespace HololensAirplaneViewer
                 {
                     await PickPresetLocationAsync();
                 }
-                else if (choice == 1 && showAdjust)
+                else if (choice == 1)
                 {
                     await EnterLocationMenuAsync(latitude, longitude);
                 }
@@ -688,85 +688,32 @@ namespace HololensAirplaneViewer
                 int choice = await ShowChoiceDialogAsync(
                     LocationSettingsModel.FormatCoordinates(latitude, longitude),
                     "Enter Location",
-                    "Nearby airports",
-                    "Type GPS coordinate",
-                    "Type Geohash",
+                    "Norwegian airport examples",
+                    "Adjust coordinates",
+                    "Sample geohash",
                     "Back");
                 if (choice == 3)
                     return;
                 if (choice == 0)
                 {
-                    await PickNearbyAirportAsync(latitude, longitude);
+                    await PickNorwegianAirportExampleAsync();
                     return;
                 }
                 if (choice == 1)
                 {
-                    await TypeCoordinateAsync(latitude, longitude);
+                    await AdjustCoordinatesAsync(latitude, longitude);
                     return;
                 }
                 if (choice == 2)
                 {
-                    await TypeGeohashAsync(latitude, longitude);
+                    await PickGeohashExampleAsync(latitude, longitude);
                     return;
                 }
             }
         }
 
-        private async Task TypeCoordinateAsync(double latitude, double longitude)
+        private async Task PickGeohashExampleAsync(double latitude, double longitude)
         {
-            while (true)
-            {
-                int choice = await ShowChoiceDialogAsync(
-                    LocationSettingsModel.FormatCoordinates(latitude, longitude),
-                    "Type GPS Coordinate",
-                    "Edit latitude",
-                    "Edit longitude",
-                    "Done");
-                if (choice == 2)
-                {
-                    LocationOverrideStore.Set(latitude, longitude);
-                    return;
-                }
-                if (choice < 0)
-                    return;
-                bool editingLatitude = choice == 0;
-                // Cycle through a small set of example values to simulate typing.
-                // In production this would be a proper text entry dialog.
-                var examples = new double[] { 0, 10, 20, 30, 40, 50, 60, 70, 80, 90 };
-                int idx = 0;
-                while (true)
-                {
-                    double val = examples[idx];
-                    string prompt = editingLatitude ? "Lat" : "Lon";
-                    int c = await ShowChoiceDialogAsync(
-                        string.Format("{0}: {1:F4}", prompt, val),
-                        "Pick value",
-                        "Use",
-                        "Next",
-                        "Back");
-                    if (c == 0)
-                    {
-                        if (editingLatitude)
-                            latitude = LocationSettingsModel.AdjustLatitude(latitude, val - latitude);
-                        else
-                            longitude = LocationSettingsModel.AdjustLongitude(longitude, val - longitude);
-                        break;
-                    }
-                    if (c == 1)
-                    {
-                        idx = (idx + 1) % examples.Length;
-                        continue;
-                    }
-                    if (c == 2)
-                        return;
-                    break;
-                }
-            }
-        }
-
-        private async Task TypeGeohashAsync(double latitude, double longitude)
-        {
-            // Demo geohashes for Oslo/Norway area
             var demoHashes = new string[] { "u4pruydqqvj", "u4pruyd", "u4pruy" };
             int idx = 0;
             while (true)
@@ -774,7 +721,7 @@ namespace HololensAirplaneViewer
                 string hash = demoHashes[idx];
                 int c = await ShowChoiceDialogAsync(
                     string.Format("Geohash: {0}\n{1}", hash, LocationSettingsModel.FormatCoordinates(latitude, longitude)),
-                    "Type Geohash",
+                    "Sample Geohash",
                     "Use this geohash",
                     "Next",
                     "Back");
@@ -794,8 +741,6 @@ namespace HololensAirplaneViewer
                 return;
             }
         }
-
-
 
         private async Task PickPresetLocationAsync()
         {
@@ -828,11 +773,19 @@ namespace HololensAirplaneViewer
                     }
                     return;
                 }
+                if (choice == 1)
+                {
+                    index = LocationSettingsModel.NextPresetIndex(index);
+                    continue;
+                }
 
-                
-        private async Task PickNearbyAirportAsync(double latitude, double longitude)
+                return;
+            }
+        }
+
+        private async Task PickNorwegianAirportExampleAsync()
         {
-            var airports = LocationSettingsModel.FindThreeClosestAirports(latitude, longitude);
+            var airports = LocationSettingsModel.NorwegianAirportExamples;
             int index = 0;
             while (true)
             {
@@ -840,7 +793,7 @@ namespace HololensAirplaneViewer
                 string detail = string.Format("{0} {1}\n{2}", a.iata, a.name, LocationSettingsModel.FormatCoordinates(a.lat, a.lon));
                 int choice = await ShowChoiceDialogAsync(
                     detail,
-                    string.Format("Nearby Airports ({0}/{1})", index + 1, airports.Length),
+                    string.Format("Norwegian Airport Examples ({0}/{1})", index + 1, airports.Length),
                     "Use this airport",
                     "Next",
                     "Back");
@@ -855,16 +808,6 @@ namespace HololensAirplaneViewer
                     index = (index + 1) % airports.Length;
                     continue;
                 }
-                return;
-            }
-        }
-
-if (choice == 1)
-                {
-                    index = LocationSettingsModel.NextPresetIndex(index);
-                    continue;
-                }
-
                 return;
             }
         }
@@ -921,9 +864,29 @@ if (choice == 1)
                 "Step Size",
                 LocationSettingsModel.FormatStep(steps[0]),
                 LocationSettingsModel.FormatStep(steps[1]),
-                LocationSettingsModel.FormatStep(steps[2]));
+                "More precise");
 
-            return choice < 0 ? 0.0 : steps[choice];
+            if (choice < 0) return 0.0;
+            if (choice < 2) return steps[choice];
+
+            choice = await ShowChoiceDialogAsync(
+                "How far should each step move the location?",
+                "Step Size",
+                LocationSettingsModel.FormatStep(steps[2]),
+                LocationSettingsModel.FormatStep(steps[3]),
+                "More precise");
+
+            if (choice < 0) return 0.0;
+            if (choice < 2) return steps[choice + 2];
+
+            choice = await ShowChoiceDialogAsync(
+                "How far should each step move the location?",
+                "Step Size",
+                LocationSettingsModel.FormatStep(steps[4]),
+                LocationSettingsModel.FormatStep(steps[5]),
+                "Back");
+
+            return choice < 0 || choice == 2 ? 0.0 : steps[choice + 4];
         }
 
         /// <summary>

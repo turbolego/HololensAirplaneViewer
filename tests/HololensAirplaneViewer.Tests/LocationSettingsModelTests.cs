@@ -59,6 +59,13 @@ namespace HololensAirplaneViewer.Tests
         }
 
         [Fact]
+        public void AdjustCoordinates_SupportsNegativeValuesAtFourDecimalPlaces()
+        {
+            Assert.Equal(-12.3456, LocationSettingsModel.AdjustLatitude(0.0, -12.3456));
+            Assert.Equal(-123.4567, LocationSettingsModel.AdjustLongitude(0.0, -123.4567));
+        }
+
+        [Fact]
         public void FormatCoordinates_UsesHemisphereSuffixes()
         {
             Assert.Equal("59.9139° N, 10.7522° E", LocationSettingsModel.FormatCoordinates(59.9139, 10.7522));
@@ -70,13 +77,43 @@ namespace HololensAirplaneViewer.Tests
         {
             Assert.Equal("10°", LocationSettingsModel.FormatStep(10.0));
             Assert.Equal("0.1°", LocationSettingsModel.FormatStep(0.1));
+            Assert.Equal("0.0001°", LocationSettingsModel.FormatStep(0.0001));
+        }
+
+        [Theory]
+        [InlineData("59.9,10.7", 59.9, 10.7)]
+        [InlineData("-33.8688;151.2093", -33.8688, 151.2093)]
+        public void TryParseCoordinateString_ParsesExactlyTwoValidCoordinates(
+            string input,
+            double expectedLatitude,
+            double expectedLongitude)
+        {
+            Assert.True(LocationSettingsModel.TryParseCoordinateString(input, out double latitude, out double longitude));
+            Assert.Equal(expectedLatitude, latitude);
+            Assert.Equal(expectedLongitude, longitude);
+        }
+
+        [Theory]
+        [InlineData("59.9,10.7,extra")]
+        [InlineData("59.9 10.7 extra")]
+        [InlineData("59.9;10.7;extra")]
+        [InlineData("59.9")]
+        public void TryParseCoordinateString_RejectsOtherThanTwoCoordinates(string input)
+        {
+            Assert.False(LocationSettingsModel.TryParseCoordinateString(input, out _, out _));
         }
 
         [Fact]
-        public void StepSizes_AreDescendingAndPositive()
+        public void NorwegianAirportExamples_AreExplicitlyRegional()
+        {
+            Assert.Equal(new[] { "OSL", "BGO", "TRD" }, LocationSettingsModel.NorwegianAirportExamples.Select(a => a.iata));
+        }
+
+        [Fact]
+        public void StepSizes_AreDescendingAndPositiveThroughFourDecimalPlaces()
         {
             var steps = LocationSettingsModel.StepSizesDegrees;
-            Assert.Equal(3, steps.Length);
+            Assert.Equal(6, steps.Length);
             for (int i = 0; i < steps.Length; i++)
             {
                 Assert.True(steps[i] > 0.0);
