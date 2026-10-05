@@ -648,10 +648,7 @@ namespace HololensAirplaneViewer
                 else
                 {
                     // No real fix yet - avoid presenting zero/stale coordinates for adjustment.
-                    string noFixStatus = string.Format(
-                        "{0}\\n{1}\\n\\nWaiting for device location…",
-                        manual ? "Manual location" : "Automatic (device) location",
-                        LocationSettingsModel.FormatCoordinates(latitude, longitude));
+                    string noFixStatus = "Waiting for device location. Choose a city or sample geohash to set an initial location.";
                     choice = await ShowChoiceDialogAsync(
                         noFixStatus,
                         "Location Settings",
@@ -666,7 +663,7 @@ namespace HololensAirplaneViewer
                 }
                 else if (choice == 1)
                 {
-                    await EnterLocationMenuAsync(latitude, longitude);
+                    await EnterLocationMenuAsync(latitude, longitude, hasFix);
                 }
                 else
                 {
@@ -682,8 +679,27 @@ namespace HololensAirplaneViewer
                 }
             }
         }
-        private async Task EnterLocationMenuAsync(double latitude, double longitude)
+        private async Task EnterLocationMenuAsync(double latitude, double longitude, bool hasFix)
         {
+            if (!hasFix)
+            {
+                int initialChoice = await ShowChoiceDialogAsync(
+                    "No device or manual location is available yet.",
+                    "Set Initial Location",
+                    "Pick a city",
+                    "Sample geohash",
+                    "Back");
+                if (initialChoice == 0)
+                {
+                    await PickPresetLocationAsync();
+                }
+                else if (initialChoice == 1)
+                {
+                    await PickGeohashExampleAsync(latitude, longitude);
+                }
+                return;
+            }
+
             while (true)
             {
                 int choice = await ShowChoiceDialogAsync(
@@ -729,19 +745,25 @@ namespace HololensAirplaneViewer
             while (true)
             {
                 string hash = demoHashes[idx];
+                if (!LocationSettingsModel.TryDecodeGeohash(hash, out double decodedLatitude, out double decodedLongitude))
+                {
+                    await ShowChoiceDialogAsync(
+                        string.Format("The sample geohash '{0}' could not be decoded.", hash),
+                        "Invalid Sample Geohash",
+                        "OK");
+                    return;
+                }
+
                 int c = await ShowChoiceDialogAsync(
-                    string.Format("Geohash: {0}\n{1}", hash, LocationSettingsModel.FormatCoordinates(latitude, longitude)),
+                    string.Format("Geohash: {0}\n{1}", hash, LocationSettingsModel.FormatCoordinates(decodedLatitude, decodedLongitude)),
                     "Sample Geohash",
                     "Use this geohash",
                     "Next",
                     "Back");
                 if (c == 0)
                 {
-                    if (LocationSettingsModel.TryDecodeGeohash(hash, out double lat, out double lon))
-                    {
-                        LocationOverrideStore.Set(lat, lon);
-                        return;
-                    }
+                    LocationOverrideStore.Set(decodedLatitude, decodedLongitude);
+                    return;
                 }
                 if (c == 1)
                 {
