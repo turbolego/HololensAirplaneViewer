@@ -1,3 +1,4 @@
+using System.IO;
 using System.Linq;
 using HololensAirplaneViewer.Services;
 using Xunit;
@@ -59,6 +60,13 @@ namespace HololensAirplaneViewer.Tests
         }
 
         [Fact]
+        public void AdjustCoordinates_SupportsNegativeValuesAtFourDecimalPlaces()
+        {
+            Assert.Equal(-12.3456, LocationSettingsModel.AdjustLatitude(0.0, -12.3456));
+            Assert.Equal(-123.4567, LocationSettingsModel.AdjustLongitude(0.0, -123.4567));
+        }
+
+        [Fact]
         public void FormatCoordinates_UsesHemisphereSuffixes()
         {
             Assert.Equal("59.9139° N, 10.7522° E", LocationSettingsModel.FormatCoordinates(59.9139, 10.7522));
@@ -70,13 +78,82 @@ namespace HololensAirplaneViewer.Tests
         {
             Assert.Equal("10°", LocationSettingsModel.FormatStep(10.0));
             Assert.Equal("0.1°", LocationSettingsModel.FormatStep(0.1));
+            Assert.Equal("0.0001°", LocationSettingsModel.FormatStep(0.0001));
+        }
+
+        [Theory]
+        [InlineData("59.9,10.7", 59.9, 10.7)]
+        [InlineData("-33.8688;151.2093", -33.8688, 151.2093)]
+        public void TryParseCoordinateString_ParsesExactlyTwoValidCoordinates(
+            string input,
+            double expectedLatitude,
+            double expectedLongitude)
+        {
+            Assert.True(LocationSettingsModel.TryParseCoordinateString(input, out double latitude, out double longitude));
+            Assert.Equal(expectedLatitude, latitude);
+            Assert.Equal(expectedLongitude, longitude);
+        }
+
+        [Theory]
+        [InlineData("59.9,10.7,extra")]
+        [InlineData("59.9 10.7 extra")]
+        [InlineData("59.9;10.7;extra")]
+        [InlineData("59.9")]
+        public void TryParseCoordinateString_RejectsOtherThanTwoCoordinates(string input)
+        {
+            Assert.False(LocationSettingsModel.TryParseCoordinateString(input, out _, out _));
         }
 
         [Fact]
-        public void StepSizes_AreDescendingAndPositive()
+        public void ParseAirportCatalog_ReadsBundledTabSeparatedRecords()
+        {
+            var airports = LocationSettingsModel.ParseAirportCatalog(new[]
+            {
+                "# Airport catalog",
+                "iata\tname\tlatitude\tlongitude",
+                "JFK\tJohn F Kennedy International\t40.6413\t-73.7781",
+                "SYD\tSydney Airport\t-33.9461\t151.1772"
+            });
+
+            Assert.Equal(new[] { "JFK", "SYD" }, airports.Select(airport => airport.Iata));
+            Assert.Equal(-33.9461, airports[1].Latitude);
+        }
+
+        [Fact]
+        public void BundledAirportCatalog_ContainsAirportsAcrossContinents()
+        {
+            var airports = LocationSettingsModel.ParseAirportCatalog(
+                File.ReadAllLines(Path.Combine(System.AppContext.BaseDirectory, "airports.tsv")));
+            var airportCodes = airports.Select(airport => airport.Iata).ToArray();
+
+            Assert.True(airports.Length > 8000);
+            Assert.Contains("JFK", airportCodes);
+            Assert.Contains("LHR", airportCodes);
+            Assert.Contains("SYD", airportCodes);
+        }
+
+        [Fact]
+        public void FindThreeClosestAirports_RanksWorldwideCatalogByDistance()
+        {
+            var airports = new[]
+            {
+                new AirportLocation("JFK", "John F Kennedy International", 40.6413, -73.7781),
+                new AirportLocation("LGA", "LaGuardia Airport", 40.7769, -73.8740),
+                new AirportLocation("EWR", "Newark Liberty International", 40.6895, -74.1745),
+                new AirportLocation("BOS", "Boston Logan International", 42.3656, -71.0096),
+                new AirportLocation("SYD", "Sydney Airport", -33.9461, 151.1772)
+            };
+
+            var nearest = LocationSettingsModel.FindThreeClosestAirports(airports, 40.7580, -73.9855);
+
+            Assert.Equal(new[] { "LGA", "EWR", "JFK" }, nearest.Select(airport => airport.Iata));
+        }
+
+        [Fact]
+        public void StepSizes_AreDescendingAndPositiveThroughFourDecimalPlaces()
         {
             var steps = LocationSettingsModel.StepSizesDegrees;
-            Assert.Equal(3, steps.Length);
+            Assert.Equal(6, steps.Length);
             for (int i = 0; i < steps.Length; i++)
             {
                 Assert.True(steps[i] > 0.0);

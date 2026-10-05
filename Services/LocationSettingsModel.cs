@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 
 namespace HololensAirplaneViewer.Services
 {
@@ -35,6 +36,22 @@ namespace HololensAirplaneViewer.Services
         }
     }
 
+    public sealed class AirportLocation
+    {
+        public AirportLocation(string iata, string name, double latitude, double longitude)
+        {
+            Iata = iata;
+            Name = name;
+            Latitude = latitude;
+            Longitude = longitude;
+        }
+
+        public string Iata { get; private set; }
+        public string Name { get; private set; }
+        public double Latitude { get; private set; }
+        public double Longitude { get; private set; }
+    }
+
     /// <summary>
     /// Pure (UWP-free) logic behind the holographic location settings modal.
     /// The modal is built from <see cref="Windows.UI.Popups.MessageDialog"/>
@@ -44,7 +61,7 @@ namespace HololensAirplaneViewer.Services
     public static class LocationSettingsModel
     {
         /// <summary>Step sizes, in degrees, offered when nudging a coordinate.</summary>
-        public static readonly double[] StepSizesDegrees = { 10.0, 1.0, 0.1 };
+        public static readonly double[] StepSizesDegrees = { 10.0, 1.0, 0.1, 0.01, 0.001, 0.0001 };
 
         private static readonly LocationPreset[] PresetList =
         {
@@ -65,6 +82,70 @@ namespace HololensAirplaneViewer.Services
         public static IList<LocationPreset> Presets
         {
             get { return PresetList; }
+        }
+
+        /// <summary>
+        /// Parses the bundled tab-separated OurAirports catalog.
+        /// </summary>
+        public static AirportLocation[] ParseAirportCatalog(IEnumerable<string> lines)
+        {
+            if (lines == null) throw new ArgumentNullException(nameof(lines));
+
+            var airports = new List<AirportLocation>();
+            foreach (string line in lines)
+            {
+                if (string.IsNullOrWhiteSpace(line) || line.StartsWith("#", StringComparison.Ordinal))
+                    continue;
+
+                string[] fields = line.Split('\t');
+                if (fields.Length == 4 && fields[0] == "iata")
+                    continue;
+                if (fields.Length != 4)
+                    throw new FormatException("An airport catalog row must contain four tab-separated fields.");
+
+                double latitude;
+                double longitude;
+                if (!double.TryParse(fields[2], NumberStyles.Float, CultureInfo.InvariantCulture, out latitude) ||
+                    !double.TryParse(fields[3], NumberStyles.Float, CultureInfo.InvariantCulture, out longitude) ||
+                    latitude < -90.0 || latitude > 90.0 ||
+                    longitude < -180.0 || longitude > 180.0 ||
+                    string.IsNullOrWhiteSpace(fields[0]) ||
+                    string.IsNullOrWhiteSpace(fields[1]))
+                {
+                    throw new FormatException("An airport catalog row contains invalid airport data.");
+                }
+
+                airports.Add(new AirportLocation(fields[0], fields[1], latitude, longitude));
+            }
+
+            return airports.ToArray();
+        }
+
+        /// <summary>Returns the three catalog airports nearest to the supplied coordinates.</summary>
+        public static AirportLocation[] FindThreeClosestAirports(
+            IEnumerable<AirportLocation> airports,
+            double latitude,
+            double longitude)
+        {
+            if (airports == null) throw new ArgumentNullException(nameof(airports));
+
+            return airports
+                .OrderBy(airport => HaversineMeters(latitude, longitude, airport.Latitude, airport.Longitude))
+                .Take(3)
+                .ToArray();
+        }
+
+        private static double HaversineMeters(double lat1, double lon1, double lat2, double lon2)
+        {
+            const double earthRadiusMeters = 6371000.0;
+            double phi1 = lat1 * Math.PI / 180.0;
+            double phi2 = lat2 * Math.PI / 180.0;
+            double deltaPhi = (lat2 - lat1) * Math.PI / 180.0;
+            double deltaLambda = (lon2 - lon1) * Math.PI / 180.0;
+            double a = Math.Sin(deltaPhi / 2.0) * Math.Sin(deltaPhi / 2.0) +
+                       Math.Cos(phi1) * Math.Cos(phi2) *
+                       Math.Sin(deltaLambda / 2.0) * Math.Sin(deltaLambda / 2.0);
+            return earthRadiusMeters * 2.0 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1.0 - a));
         }
 
         /// <summary>Cycles to the next preset, wrapping at the end of the list.</summary>
@@ -120,7 +201,47 @@ namespace HololensAirplaneViewer.Services
 
         public static string FormatStep(double stepDegrees)
         {
-            return string.Format(CultureInfo.InvariantCulture, "{0:0.###}°", stepDegrees);
+            return string.Format(CultureInfo.InvariantCulture, "{0:0.####}°", stepDegrees);
         }
+
+        /// <summary>
+        /// Parse a decimal lat/lon string "lat,lon" into doubles.
+        /// Returns false on parse failure.
+        /// </summary>
+        public static bool TryParseCoordinateString(string input, out double latitude, out double longitude)
+        {
+            latitude = 0; longitude = 0;
+            if (string.IsNullOrWhiteSpace(input)) return false;
+            var parts = input.Split(new[] { ',', ' ', ';' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length != 2) return false;
+            if (!double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out latitude)) return false;
+            if (!double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out longitude)) return false;
+            if (double.IsNaN(latitude) || double.IsInfinity(latitude) ||
+                double.IsNaN(longitude) || double.IsInfinity(longitude) ||
+                latitude < -90 || latitude > 90 ||
+                longitude < -180 || longitude > 180) return false;
+            return true;
+        }
+
+        /// <summary>
+        /// Decode a geohash to lat/lon using GeohashConverter.
+        /// Returns false on decode failure.
+        /// </summary>
+        public static bool TryDecodeGeohash(string geohash, out double latitude, out double longitude)
+        {
+            latitude = 0; longitude = 0;
+            try
+            {
+                var coord = Utilities.GeohashConverter.Decode(geohash);
+                latitude = coord.Latitude;
+                longitude = coord.Longitude;
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
     }
 }

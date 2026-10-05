@@ -23,7 +23,13 @@ only command buttons (max 3), so the flow is a small chain of dialogs:
    first entry restores the automatic (device supplied) location.
    Commands: `Use this location`, `Next`, `Back`.
 3. **Adjust Coordinates** — pick `Latitude` or `Longitude`, then a step size
-   (10 deg / 1 deg / 0.1 deg), then nudge with `+`/`-`. `Apply` stores the result.
+   (10 deg down to 0.0001 deg), then nudge with `+`/`-`. `Apply` stores the
+   result. This is adjustment by steps, not free-text coordinate entry.
+4. **Nearby airports and geohash examples** — nearby airports are ranked by
+   great-circle distance from the current coordinates using the bundled
+   `Services/airports.tsv` catalog. Geohash choices are sample values; neither
+   flow accepts typed text. The location menu is split across dialogs to stay
+   within `MessageDialog`'s three-command limit.
 
 ## Code map
 - `Content/AirplaneRenderer.cs` — draws the button and hit-tests the gaze ray.
@@ -31,6 +37,8 @@ only command buttons (max 3), so the flow is a small chain of dialogs:
 - `BasicHologramMain.cs` — runs the modal chain (`OpenSettingsView`).
 - `Services/LocationSettingsModel.cs` — presets, coordinate stepping, and
   formatting (pure logic, unit tested).
+- `Services/airports.tsv` — public-domain OurAirports data for active small,
+  medium, and large airports with IATA codes.
 - `Services/LocationOverrideStore.cs` — thread-safe bridge to the renderer;
   `Set` applies a manual location, `Clear` returns to the device location, and
   the generation counter invalidates in-flight OpenSky fetches.

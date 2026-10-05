@@ -16,6 +16,7 @@ using Windows.Graphics.Holographic;
 using Windows.Perception.Spatial;
 using Windows.UI.Input.Spatial;
 using Windows.UI.Popups;
+using Windows.Storage;
 
 using HololensAirplaneViewer.Common;
 using HololensAirplaneViewer.Models;
@@ -641,20 +642,18 @@ namespace HololensAirplaneViewer
                         status,
                         "Location Settings",
                         "Pick a city",
-                        "Adjust coordinates",
+                        "Enter location",
                         "Close");
                 }
                 else
                 {
                     // No real fix yet - avoid presenting zero/stale coordinates for adjustment.
-                    string noFixStatus = string.Format(
-                        "{0}\\n{1}\\n\\nWaiting for device location…",
-                        manual ? "Manual location" : "Automatic (device) location",
-                        LocationSettingsModel.FormatCoordinates(latitude, longitude));
+                    string noFixStatus = "Waiting for device location. Choose a city or sample geohash to set an initial location.";
                     choice = await ShowChoiceDialogAsync(
                         noFixStatus,
                         "Location Settings",
                         "Pick a city",
+                        "Enter location",
                         "Close");
                 }
 
@@ -662,9 +661,9 @@ namespace HololensAirplaneViewer
                 {
                     await PickPresetLocationAsync();
                 }
-                else if (choice == 1 && showAdjust)
+                else if (choice == 1)
                 {
-                    await AdjustCoordinatesAsync(latitude, longitude);
+                    await EnterLocationMenuAsync(latitude, longitude, hasFix);
                 }
                 else
                 {
@@ -678,6 +677,100 @@ namespace HololensAirplaneViewer
                     latitude = airplaneRenderer.CurrentLatitude;
                     longitude = airplaneRenderer.CurrentLongitude;
                 }
+            }
+        }
+        private async Task EnterLocationMenuAsync(double latitude, double longitude, bool hasFix)
+        {
+            if (!hasFix)
+            {
+                int initialChoice = await ShowChoiceDialogAsync(
+                    "No device or manual location is available yet.",
+                    "Set Initial Location",
+                    "Pick a city",
+                    "Sample geohash",
+                    "Back");
+                if (initialChoice == 0)
+                {
+                    await PickPresetLocationAsync();
+                }
+                else if (initialChoice == 1)
+                {
+                    await PickGeohashExampleAsync(latitude, longitude);
+                }
+                return;
+            }
+
+            while (true)
+            {
+                int choice = await ShowChoiceDialogAsync(
+                    LocationSettingsModel.FormatCoordinates(latitude, longitude),
+                    "Enter Location",
+                    "Nearby airports",
+                    "More location options",
+                    "Back");
+                if (choice == 0)
+                {
+                    await PickNearbyAirportAsync(latitude, longitude);
+                    return;
+                }
+                if (choice == 1)
+                {
+                    int locationChoice = await ShowChoiceDialogAsync(
+                        "Choose how to set the location.",
+                        "Location Options",
+                        "Adjust coordinates",
+                        "Sample geohash",
+                        "Back");
+                    if (locationChoice == 0)
+                    {
+                        await AdjustCoordinatesAsync(latitude, longitude);
+                        return;
+                    }
+                    if (locationChoice == 1)
+                    {
+                        await PickGeohashExampleAsync(latitude, longitude);
+                        return;
+                    }
+                    continue;
+                }
+
+                return;
+            }
+        }
+
+        private async Task PickGeohashExampleAsync(double latitude, double longitude)
+        {
+            var demoHashes = new string[] { "u4pruydqqvj", "u4pruyd", "u4pruy" };
+            int idx = 0;
+            while (true)
+            {
+                string hash = demoHashes[idx];
+                if (!LocationSettingsModel.TryDecodeGeohash(hash, out double decodedLatitude, out double decodedLongitude))
+                {
+                    await ShowChoiceDialogAsync(
+                        string.Format("The sample geohash '{0}' could not be decoded.", hash),
+                        "Invalid Sample Geohash",
+                        "OK");
+                    return;
+                }
+
+                int c = await ShowChoiceDialogAsync(
+                    string.Format("Geohash: {0}\n{1}", hash, LocationSettingsModel.FormatCoordinates(decodedLatitude, decodedLongitude)),
+                    "Sample Geohash",
+                    "Use this geohash",
+                    "Next",
+                    "Back");
+                if (c == 0)
+                {
+                    LocationOverrideStore.Set(decodedLatitude, decodedLongitude);
+                    return;
+                }
+                if (c == 1)
+                {
+                    idx = (idx + 1) % demoHashes.Length;
+                    continue;
+                }
+                return;
             }
         }
 
@@ -712,13 +805,69 @@ namespace HololensAirplaneViewer
                     }
                     return;
                 }
-
                 if (choice == 1)
                 {
                     index = LocationSettingsModel.NextPresetIndex(index);
                     continue;
                 }
 
+                return;
+            }
+        }
+
+        private async Task PickNearbyAirportAsync(double latitude, double longitude)
+        {
+            AirportLocation[] airports;
+            try
+            {
+                StorageFile catalogFile = await StorageFile.GetFileFromApplicationUriAsync(
+                    new Uri("ms-appx:///Services/airports.tsv"));
+                IList<string> catalogLines = await FileIO.ReadLinesAsync(catalogFile);
+                airports = LocationSettingsModel.FindThreeClosestAirports(
+                    LocationSettingsModel.ParseAirportCatalog(catalogLines),
+                    latitude,
+                    longitude);
+            }
+            catch (Exception exception)
+            {
+                await ShowChoiceDialogAsync(
+                    string.Format("Airport data could not be loaded: {0}", exception.Message),
+                    "Nearby Airports",
+                    "OK");
+                return;
+            }
+
+            if (airports.Length == 0)
+            {
+                await ShowChoiceDialogAsync(
+                    "No airports are available in the airport catalog.",
+                    "Nearby Airports",
+                    "OK");
+                return;
+            }
+
+            int index = 0;
+            while (true)
+            {
+                var a = airports[index];
+                string detail = string.Format("{0} {1}\n{2}", a.Iata, a.Name, LocationSettingsModel.FormatCoordinates(a.Latitude, a.Longitude));
+                int choice = await ShowChoiceDialogAsync(
+                    detail,
+                    string.Format("Nearby Airports ({0}/{1})", index + 1, airports.Length),
+                    "Use this airport",
+                    "Next",
+                    "Back");
+
+                if (choice == 0)
+                {
+                    LocationOverrideStore.Set(a.Latitude, a.Longitude);
+                    return;
+                }
+                if (choice == 1)
+                {
+                    index = (index + 1) % airports.Length;
+                    continue;
+                }
                 return;
             }
         }
@@ -775,9 +924,29 @@ namespace HololensAirplaneViewer
                 "Step Size",
                 LocationSettingsModel.FormatStep(steps[0]),
                 LocationSettingsModel.FormatStep(steps[1]),
-                LocationSettingsModel.FormatStep(steps[2]));
+                "More precise");
 
-            return choice < 0 ? 0.0 : steps[choice];
+            if (choice < 0) return 0.0;
+            if (choice < 2) return steps[choice];
+
+            choice = await ShowChoiceDialogAsync(
+                "How far should each step move the location?",
+                "Step Size",
+                LocationSettingsModel.FormatStep(steps[2]),
+                LocationSettingsModel.FormatStep(steps[3]),
+                "More precise");
+
+            if (choice < 0) return 0.0;
+            if (choice < 2) return steps[choice + 2];
+
+            choice = await ShowChoiceDialogAsync(
+                "How far should each step move the location?",
+                "Step Size",
+                LocationSettingsModel.FormatStep(steps[4]),
+                LocationSettingsModel.FormatStep(steps[5]),
+                "Back");
+
+            return choice < 0 || choice == 2 ? 0.0 : steps[choice + 4];
         }
 
         /// <summary>
@@ -824,6 +993,11 @@ namespace HololensAirplaneViewer
         /// </summary>
         private static async Task<int> ShowChoiceDialogAsync(string content, string title, params string[] labels)
         {
+            if (labels.Length > 3)
+            {
+                throw new ArgumentOutOfRangeException(nameof(labels), "MessageDialog supports at most three commands.");
+            }
+
             int selected = -1;
             var dialog = new MessageDialog(content, title);
 
