@@ -893,7 +893,7 @@ namespace HololensAirplaneViewer.Content
             foreach (var plane in airplanes)
             {
                 var planePos = ComputeAirplanePosition(plane);
-                float dist = AirplaneMath.GreatCircleDistanceMeters(
+                double dist = AirplaneMath.GreatCircleDistanceMeters(
                     currentLatitude, currentLongitude,
                     plane.Latitude ?? currentLatitude,
                     plane.Longitude ?? currentLongitude);
