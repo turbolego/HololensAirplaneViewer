@@ -58,11 +58,9 @@ namespace HololensAirplaneViewer.Content
         private float ceilingY;
 
         /// <summary>
-        /// Latest compass heading in degrees (0=North, 90=East, 180=South, 270=West).
-        /// Updated on a background thread by CompassService; read on the render thread.
+        /// World-space yaw of north in degrees (0=North along -Z, 90=East along +X).
         /// </summary>
         private float compassHeadingDegrees;
-        private float sessionNorthAlignmentDegrees;
 
         private string gpsDebug = "GPS: WAITING FOR OS LOCATION";
         private string apiDebug = "OpenSky: --";
@@ -353,14 +351,9 @@ namespace HololensAirplaneViewer.Content
         /// <summary>
         /// Set by the main loop each frame from the compass service.
         /// </summary>
-        public void SetCompassHeading(float degrees)
+        public void SetWorldNorthHeading(float degrees)
         {
-            compassHeadingDegrees = NormalizeDegrees(degrees + sessionNorthAlignmentDegrees);
-        }
-
-        public void SetNorthAlignment(float degrees)
-        {
-            sessionNorthAlignmentDegrees = NormalizeDegrees(degrees);
+            compassHeadingDegrees = NormalizeDegrees(degrees);
         }
 
         // Update radar sweep animation angle

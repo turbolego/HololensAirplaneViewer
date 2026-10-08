@@ -82,6 +82,7 @@ namespace HololensAirplaneViewer
         // Guard against stacking airplane info dialogs.
         private bool _infoDialogShowing = false;
         private bool _settingsDialogShowing = false;
+        private bool _northAlignmentInitialized;
 
         // Cache whether or not the HolographicCamera.Display property can be accessed.
         bool canGetHolographicDisplayForCamera = false;
@@ -254,11 +255,17 @@ namespace HololensAirplaneViewer
 
                 pointerPressed = false;
 
-                // Read the latest compass heading (updated on background thread by CompassService)
-                float compassHeading = compassService?.CalibratedHeading ?? 0f;
-
                 airplaneRenderer.PositionHologram(headPose);
-                airplaneRenderer.SetCompassHeading(compassHeading);
+                float headYaw;
+                if (!_northAlignmentInitialized
+                    && headPose != null
+                    && compassService != null
+                    && compassService.HasHeading
+                    && TryGetHorizontalHeadYaw(headPose, out headYaw))
+                {
+                    airplaneRenderer.SetWorldNorthHeading(headYaw - compassService.CalibratedHeading);
+                    _northAlignmentInitialized = true;
+                }
             }
 #endif
 
@@ -579,6 +586,7 @@ namespace HololensAirplaneViewer
             {
                 stationaryReferenceFrame = null;
             }
+            _northAlignmentInitialized = false;
 
 #if DRAW_SAMPLE_CONTENT
             // Propagate the stationary reference frame to the renderer
@@ -638,24 +646,18 @@ namespace HololensAirplaneViewer
                 string dialogStatus = hasFix
                     ? status
                     : "Waiting for device location. Choose a city or enter geohash to set an initial location.";
-                choice = hasFix
-                    ? await ShowChoiceDialogAsync(
-                        dialogStatus,
-                        "Location Settings",
-                        "Change location",
-                        "Set North",
-                        "Close")
-                    : await ShowChoiceDialogAsync(
-                        dialogStatus,
-                        "Location Settings",
-                        "Change location",
-                        "Close");
+                choice = await ShowChoiceDialogAsync(
+                    dialogStatus,
+                    "Location Settings",
+                    "Change location",
+                    "Set North",
+                    "Close");
 
                 if (choice == 0)
                 {
                     await RunLocationActionsAsync(latitude, longitude, hasFix);
                 }
-                else if (choice == 1 && hasFix)
+                else if (choice == 1)
                 {
                     SpatialPointerPose alignmentPose = stationaryReferenceFrame == null
                         ? null
@@ -671,9 +673,8 @@ namespace HololensAirplaneViewer
                         continue;
                     }
 
-                    var forward = alignmentPose.Head.ForwardDirection;
-                    double horizontalLength = Math.Sqrt(forward.X * forward.X + forward.Z * forward.Z);
-                    if (horizontalLength < 0.1)
+                    float northAlignment;
+                    if (!TryGetHorizontalHeadYaw(alignmentPose, out northAlignment))
                     {
                         await ShowChoiceDialogAsync(
                             "Look toward the horizon before setting north.",
@@ -682,16 +683,26 @@ namespace HololensAirplaneViewer
                         continue;
                     }
 
-                    float northAlignment = (float)(Math.Atan2(forward.X, -forward.Z) * 180.0 / Math.PI);
-                    float magneticHeading = compassService?.CurrentHeadingDegrees ?? 0f;
-                    compassService?.SetCalibrationOffset(magneticHeading);
-                    airplaneRenderer.SetNorthAlignment(northAlignment);
-                    await ShowChoiceDialogAsync(
-                        string.Format(
-                            "North aligned to your gaze. Magnetic correction saved: {0:F1}°.",
-                            magneticHeading),
-                        "Set North",
-                        "OK");
+                    if (compassService != null && compassService.HasHeading)
+                    {
+                        float magneticHeading = compassService.CurrentHeadingDegrees;
+                        compassService.SetCalibrationOffset(magneticHeading);
+                        await ShowChoiceDialogAsync(
+                            string.Format(
+                                "North aligned to your gaze. Magnetic correction saved: {0:F1}°.",
+                                magneticHeading),
+                            "Set North",
+                            "OK");
+                    }
+                    else
+                    {
+                        await ShowChoiceDialogAsync(
+                            "North aligned to your gaze for this session. A compass reading is unavailable, so no magnetic correction was saved.",
+                            "Set North",
+                            "OK");
+                    }
+                    airplaneRenderer.SetWorldNorthHeading(northAlignment);
+                    _northAlignmentInitialized = true;
                     // Continue loop to allow further adjustments
                 }
                 else
@@ -707,6 +718,20 @@ namespace HololensAirplaneViewer
                     longitude = airplaneRenderer.CurrentLongitude;
                 }
             }
+        }
+
+        private static bool TryGetHorizontalHeadYaw(SpatialPointerPose pose, out float yawDegrees)
+        {
+            var forward = pose.Head.ForwardDirection;
+            double horizontalLength = Math.Sqrt(forward.X * forward.X + forward.Z * forward.Z);
+            if (horizontalLength < 0.1)
+            {
+                yawDegrees = 0f;
+                return false;
+            }
+
+            yawDegrees = (float)(Math.Atan2(forward.X, -forward.Z) * 180.0 / Math.PI);
+            return true;
         }
 
         private async Task RunLocationActionsAsync(double latitude, double longitude, bool hasFix)

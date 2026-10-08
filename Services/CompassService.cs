@@ -17,6 +17,8 @@ namespace HololensAirplaneViewer.Services
         /// <summary>Latest magnetic heading in degrees (0–360). 0 if compass unavailable.</summary>
         public float CurrentHeadingDegrees { get; private set; }
 
+        public bool HasHeading { get; private set; }
+
         /// <summary>Raised when the heading changes (on a background thread).</summary>
         public event EventHandler<float> HeadingChanged;
 
@@ -70,6 +72,7 @@ namespace HololensAirplaneViewer.Services
                 // Normalize to [0, 360)
                 heading = (heading + 360f) % 360f;
                 CurrentHeadingDegrees = heading;
+                HasHeading = true;
                 HeadingChanged?.Invoke(this, heading);
             }
         }
