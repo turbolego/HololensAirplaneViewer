@@ -1,5 +1,6 @@
 using System;
 using Windows.Devices.Sensors;
+using Windows.Storage;
 
 namespace HololensAirplaneViewer.Services
 {
@@ -14,7 +15,12 @@ namespace HololensAirplaneViewer.Services
         private bool _disposed;
 
         /// <summary>Latest magnetic heading in degrees (0–360). 0 if compass unavailable.</summary>
-        public float CurrentHeadingDegrees { get; private set; }
+        public float CurrentHeadingDegrees { get; private set; 
+        // Calibration offset in degrees (user set north)
+        private static float _calibrationOffset = 0f;
+        // Returns heading adjusted by user calibration
+        public float CalibratedHeading => (CurrentHeadingDegrees - _calibrationOffset + 360f) % 360f;
+}
 
         /// <summary>Raised when the heading changes (on a background thread).</summary>
         public event EventHandler<float> HeadingChanged;
@@ -32,6 +38,9 @@ namespace HololensAirplaneViewer.Services
             {
                 return;
             }
+            // Load saved calibration offset
+            _calibrationOffset = CompassCalibrationStore.LoadOffset();
+
 
             // Set report interval — use minimum supported, cap at ~60 Hz
             uint minInterval = _compass.MinimumReportInterval;
