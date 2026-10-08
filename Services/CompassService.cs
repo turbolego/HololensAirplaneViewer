@@ -39,20 +39,24 @@ namespace HololensAirplaneViewer.Services
         {
             if (_disposed) return;
 
+            _calibrationOffset = CompassCalibrationStore.LoadOffset();
             _compass = Compass.GetDefault();
             if (_compass == null)
             {
                 return;
             }
-            // Load saved calibration offset
-            _calibrationOffset = CompassCalibrationStore.LoadOffset();
-
 
             // Set report interval — use minimum supported, cap at ~60 Hz
             uint minInterval = _compass.MinimumReportInterval;
             _compass.ReportInterval = minInterval > 16 ? minInterval : 16;
 
             _compass.ReadingChanged += OnReadingChanged;
+        }
+
+        public void SetCalibrationOffset(float offsetDegrees)
+        {
+            _calibrationOffset = (offsetDegrees % 360f + 360f) % 360f;
+            CompassCalibrationStore.SaveOffset(_calibrationOffset);
         }
 
         private void OnReadingChanged(Compass sender, CompassReadingChangedEventArgs args)

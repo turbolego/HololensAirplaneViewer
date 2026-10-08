@@ -255,7 +255,7 @@ namespace HololensAirplaneViewer
                 pointerPressed = false;
 
                 // Read the latest compass heading (updated on background thread by CompassService)
-                float compassHeading = compassService?.CurrentHeadingDegrees ?? 0f;
+                float compassHeading = compassService?.CalibratedHeading ?? 0f;
 
                 airplaneRenderer.PositionHologram(headPose);
                 airplaneRenderer.SetCompassHeading(compassHeading);
@@ -634,42 +634,32 @@ namespace HololensAirplaneViewer
                     manual ? "Manual location" : "Automatic (device) location",
                     LocationSettingsModel.FormatCoordinates(latitude, longitude));
 
-                bool showAdjust = hasFix;
                 int choice;
-                if (showAdjust)
-                {
-                    choice = await ShowChoiceDialogAsync(
-                        status,
+                string dialogStatus = hasFix
+                    ? status
+                    : "Waiting for device location. Choose a city or enter geohash to set an initial location.";
+                choice = hasFix
+                    ? await ShowChoiceDialogAsync(
+                        dialogStatus,
                         "Location Settings",
-                        "Pick a city",
-                        "Enter location",
+                        "Change location",
                         "Set North",
-                        "Close");
-                }
-                else
-                {
-                    string noFixStatus = "Waiting for device location. Choose a city or enter geohash to set an initial location.";
-                    choice = await ShowChoiceDialogAsync(
-                        noFixStatus,
+                        "Close")
+                    : await ShowChoiceDialogAsync(
+                        dialogStatus,
                         "Location Settings",
-                        "Pick a city",
-                        "Enter location",
+                        "Change location",
                         "Close");
-                }
 
                 if (choice == 0)
                 {
-                    await PickPresetLocationAsync();
+                    await RunLocationActionsAsync(latitude, longitude, hasFix);
                 }
-                else if (choice == 1)
-                {
-                    await EnterLocationMenuAsync(latitude, longitude, hasFix);
-                }
-                else if (choice == 2 && showAdjust)
+                else if (choice == 1 && hasFix)
                 {
                     // Set North calibration using current compass heading
                     float heading = compassService?.CurrentHeadingDegrees ?? 0f;
-                    CompassCalibrationStore.SaveOffset(heading);
+                    compassService?.SetCalibrationOffset(heading);
                     await ShowChoiceDialogAsync($"North set. Heading saved: {heading:F1}°", "Set North", "OK");
                     // Continue loop to allow further adjustments
                 }
@@ -685,6 +675,25 @@ namespace HololensAirplaneViewer
                     latitude = airplaneRenderer.CurrentLatitude;
                     longitude = airplaneRenderer.CurrentLongitude;
                 }
+            }
+        }
+
+        private async Task RunLocationActionsAsync(double latitude, double longitude, bool hasFix)
+        {
+            int choice = await ShowChoiceDialogAsync(
+                "Choose how to set the location.",
+                "Location Options",
+                "Pick a city",
+                "Enter location",
+                "Back");
+
+            if (choice == 0)
+            {
+                await PickPresetLocationAsync();
+            }
+            else if (choice == 1)
+            {
+                await EnterLocationMenuAsync(latitude, longitude, hasFix);
             }
         }
 
