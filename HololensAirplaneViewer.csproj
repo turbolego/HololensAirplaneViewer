@@ -81,6 +81,7 @@
     <Compile Include="Services\AirplaneSelection.cs" />
     <Compile Include="Services\AirplaneService.cs" />
     <Compile Include="Services\CompassService.cs" />
+    <Compile Include="Services\CompassCalibrationStore.cs" />
     <Compile Include="Services\GeolocationService.cs" />
     <Compile Include="Services\LocationOverrideStore.cs" />
     <Compile Include="Services\LocationSettingsModel.cs" />
