@@ -15,15 +15,21 @@ namespace HololensAirplaneViewer.Services
         private bool _disposed;
 
         /// <summary>Latest magnetic heading in degrees (0–360). 0 if compass unavailable.</summary>
-        public float CurrentHeadingDegrees { get; private set; 
-        // Calibration offset in degrees (user set north)
-        private static float _calibrationOffset = 0f;
-        // Returns heading adjusted by user calibration
-        public float CalibratedHeading => (CurrentHeadingDegrees - _calibrationOffset + 360f) % 360f;
-}
+        public float CurrentHeadingDegrees { get; private set; }
 
         /// <summary>Raised when the heading changes (on a background thread).</summary>
         public event EventHandler<float> HeadingChanged;
+
+        /// <summary>
+        /// Calibration offset in degrees (user set north).
+        /// Stored statically and loaded on Initialize.
+        /// </summary>
+        private static float _calibrationOffset = 0f;
+
+        /// <summary>
+        /// Returns heading adjusted by user calibration.
+        /// </summary>
+        public float CalibratedHeading => (CurrentHeadingDegrees - _calibrationOffset + 360f) % 360f;
 
         /// <summary>
         /// Initializes the compass sensor. No-op if the sensor is unavailable.
