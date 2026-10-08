@@ -657,10 +657,41 @@ namespace HololensAirplaneViewer
                 }
                 else if (choice == 1 && hasFix)
                 {
-                    // Set North calibration using current compass heading
-                    float heading = compassService?.CurrentHeadingDegrees ?? 0f;
-                    compassService?.SetCalibrationOffset(heading);
-                    await ShowChoiceDialogAsync($"North set. Heading saved: {heading:F1}°", "Set North", "OK");
+                    SpatialPointerPose alignmentPose = stationaryReferenceFrame == null
+                        ? null
+                        : SpatialPointerPose.TryGetAtTimestamp(
+                            stationaryReferenceFrame.CoordinateSystem,
+                            Windows.Perception.PerceptionTimestampHelper.FromHistoricalTargetTime(DateTime.Now));
+                    if (alignmentPose == null)
+                    {
+                        await ShowChoiceDialogAsync(
+                            "The current head direction is unavailable. Try setting north again.",
+                            "Set North",
+                            "OK");
+                        continue;
+                    }
+
+                    var forward = alignmentPose.Head.ForwardDirection;
+                    double horizontalLength = Math.Sqrt(forward.X * forward.X + forward.Z * forward.Z);
+                    if (horizontalLength < 0.1)
+                    {
+                        await ShowChoiceDialogAsync(
+                            "Look toward the horizon before setting north.",
+                            "Set North",
+                            "OK");
+                        continue;
+                    }
+
+                    float northAlignment = (float)(Math.Atan2(forward.X, -forward.Z) * 180.0 / Math.PI);
+                    float magneticHeading = compassService?.CurrentHeadingDegrees ?? 0f;
+                    compassService?.SetCalibrationOffset(magneticHeading);
+                    airplaneRenderer.SetNorthAlignment(northAlignment);
+                    await ShowChoiceDialogAsync(
+                        string.Format(
+                            "North aligned to your gaze. Magnetic correction saved: {0:F1}°.",
+                            magneticHeading),
+                        "Set North",
+                        "OK");
                     // Continue loop to allow further adjustments
                 }
                 else

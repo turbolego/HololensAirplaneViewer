@@ -27,6 +27,7 @@ namespace HololensAirplaneViewer.Content
         private SharpDX.Direct3D11.PixelShader pixelShader;
         private SharpDX.Direct3D11.PixelShader linePixelShader;
         private SharpDX.Direct3D11.BlendState lineBlendState;
+        private SharpDX.Direct3D11.DepthStencilState radarDepthStencilState;
         private SharpDX.Direct3D11.Buffer modelConstantBuffer;
 
         private SharpDX.Direct3D11.InputLayout textInputLayout;
@@ -61,6 +62,7 @@ namespace HololensAirplaneViewer.Content
         /// Updated on a background thread by CompassService; read on the render thread.
         /// </summary>
         private float compassHeadingDegrees;
+        private float sessionNorthAlignmentDegrees;
 
         private string gpsDebug = "GPS: WAITING FOR OS LOCATION";
         private string apiDebug = "OpenSky: --";
@@ -316,12 +318,23 @@ namespace HololensAirplaneViewer.Content
                 return;
             }
 
-            RenderFloorCompass();
-            RenderRadarDisc();
-            RenderRadarLines();
             RenderCursor();
             RenderAirplanes();
             RenderText();
+            RenderFloorCompass();
+            RenderRadarLabels();
+
+            var context = deviceResources.D3DDeviceContext;
+            context.OutputMerger.SetDepthStencilState(radarDepthStencilState, 0);
+            try
+            {
+                RenderRadarDisc();
+                RenderRadarLines();
+            }
+            finally
+            {
+                context.OutputMerger.SetDepthStencilState(null, 0);
+            }
         }
 
         private void RenderCursor()
@@ -342,7 +355,12 @@ namespace HololensAirplaneViewer.Content
         /// </summary>
         public void SetCompassHeading(float degrees)
         {
-            compassHeadingDegrees = degrees;
+            compassHeadingDegrees = NormalizeDegrees(degrees + sessionNorthAlignmentDegrees);
+        }
+
+        public void SetNorthAlignment(float degrees)
+        {
+            sessionNorthAlignmentDegrees = NormalizeDegrees(degrees);
         }
 
         // Update radar sweep animation angle
@@ -675,6 +693,15 @@ namespace HololensAirplaneViewer.Content
             blendDescription.RenderTarget[0].RenderTargetWriteMask = SharpDX.Direct3D11.ColorWriteMaskFlags.All;
             lineBlendState = ToDispose(new SharpDX.Direct3D11.BlendState(deviceResources.D3DDevice, blendDescription));
 
+            var depthStencilDescription = new SharpDX.Direct3D11.DepthStencilStateDescription
+            {
+                IsDepthEnabled = true,
+                DepthWriteMask = SharpDX.Direct3D11.DepthWriteMask.Zero,
+                DepthComparison = SharpDX.Direct3D11.Comparison.LessEqual,
+                IsStencilEnabled = false
+            };
+            radarDepthStencilState = ToDispose(new SharpDX.Direct3D11.DepthStencilState(deviceResources.D3DDevice, depthStencilDescription));
+
             // Text shaders
             var tvsFile = usingVprtShaders ? "Content\\Shaders\\TextVPRTVertexShader.cso" : "Content\\Shaders\\TextVertexShader.cso";
             var tvsBytes = await DirectXHelper.ReadDataAsync(await folder.GetFileAsync(tvsFile));
@@ -761,6 +788,7 @@ namespace HololensAirplaneViewer.Content
             DisposeAndNull(ref pixelShader);
             DisposeAndNull(ref linePixelShader);
             DisposeAndNull(ref lineBlendState);
+            DisposeAndNull(ref radarDepthStencilState);
             DisposeAndNull(ref modelConstantBuffer);
 
             DisposeAndNull(ref textInputLayout);
@@ -785,6 +813,11 @@ namespace HololensAirplaneViewer.Content
             while (a > Math.PI) a -= (float)(2.0 * Math.PI);
             while (a < -Math.PI) a += (float)(2.0 * Math.PI);
             return a;
+        }
+
+        private static float NormalizeDegrees(float degrees)
+        {
+            return (degrees % 360f + 360f) % 360f;
         }
 
         /// <summary>
@@ -891,15 +924,6 @@ namespace HololensAirplaneViewer.Content
             foreach (var plane in airplanes)
             {
                 var planePos = ComputeAirplanePosition(plane);
-                double dist = AirplaneMath.GreatCircleDistanceMeters(
-                    currentLatitude, currentLongitude,
-                    plane.Latitude ?? currentLatitude,
-                    plane.Longitude ?? currentLongitude);
-
-                string distText = dist < 1000f
-                    ? string.Format("{0:F0}m", dist)
-                    : string.Format("{0:F1}km", dist / 1000f);
-
                 // Draw dotted line (every 3rd segment)
                 int segments = 20;
                 for (int i = 0; i < segments; i++)
@@ -912,9 +936,26 @@ namespace HololensAirplaneViewer.Content
                     DrawLine(p1, p2, new Vector4(0.0f, 1.0f, 0.5f, 0.8f), compassHeadingDegrees);
                 }
 
-                // Distance label at midpoint
+            }
+        }
+
+        private void RenderRadarLabels()
+        {
+            if (airplanes == null || airplanes.Count == 0) return;
+
+            foreach (var plane in airplanes)
+            {
+                var planePos = ComputeAirplanePosition(plane);
+                double dist = AirplaneMath.GreatCircleDistanceMeters(
+                    currentLatitude, currentLongitude,
+                    plane.Latitude ?? currentLatitude,
+                    plane.Longitude ?? currentLongitude);
+                string distText = dist < 1000.0
+                    ? string.Format("{0:F0}m", dist)
+                    : string.Format("{0:F1}km", dist / 1000.0);
+
                 Vector3 midPos = radarPosition + (planePos - radarPosition) * 0.5f;
-                midPos.Y += 0.05f; // slight offset above line
+                midPos.Y += 0.05f;
                 DrawTextBillboard(distText, midPos, DebugTextSize * 0.9f, true, compassHeadingDegrees);
             }
         }
