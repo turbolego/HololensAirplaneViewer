@@ -67,6 +67,12 @@ namespace HololensAirplaneViewer.Content
         private Vector3 settingsButtonPosition = Vector3.Zero;
         private float settingsButtonRadius = 0.2f;
 
+        // Radar hologram: disc above the settings button
+        private Vector3 radarPosition = Vector3.Zero;
+        private const float RadarHeightAboveSettings = 0.35f; // meters above SETTINGS text
+        private const float RadarDiscRadius = 0.4f;
+        private float radarSweepAngle = 0f; // animated sweep line angle
+
         private SpatialStationaryFrameOfReference stationaryReferenceFrame;
 
         // Observer's GPS fix (used for lat/lon → local dome mapping)
@@ -307,6 +313,8 @@ namespace HololensAirplaneViewer.Content
             }
 
             RenderFloorCompass();
+            RenderRadarDisc();
+            RenderRadarLines();
             RenderCursor();
             RenderAirplanes();
             RenderText();
@@ -330,6 +338,13 @@ namespace HololensAirplaneViewer.Content
         public void SetCompassHeading(float degrees)
         {
             compassHeadingDegrees = degrees;
+        }
+
+        // Update radar sweep animation angle
+        public void UpdateRadarSweep(float deltaSeconds)
+        {
+            radarSweepAngle += deltaSeconds * 1.5f; // sweep speed (rad/s)
+            if (radarSweepAngle > 6.2832f) radarSweepAngle -= 6.2832f;
         }
 
         private void RenderAirplanes()
@@ -391,6 +406,9 @@ namespace HololensAirplaneViewer.Content
             // Update hover state
             SpatialPointerPose headPose = SpatialPointerPose.TryGetAtTimestamp(stationaryReferenceFrame.CoordinateSystem, Windows.Perception.PerceptionTimestampHelper.FromHistoricalTargetTime(DateTime.Now));
             UpdateHoverState(CheckSettingsHit(headPose));
+
+            // Update radar position (above settings button)
+            radarPosition = settingsButtonPosition + new Vector3(0.0f, RadarHeightAboveSettings, 0.0f);
 
             Vector3 panelCenter = worldCenter + new Vector3(0.0f, 0.15f, -1.15f);
             var lines = new List<string>();
@@ -842,6 +860,92 @@ namespace HololensAirplaneViewer.Content
         {
             public Matrix4x4 model;
             public Vector4 color;
+        }
+
+        // Render a disc hologram above the SETTINGS text, with rotating sweep line
+        private void RenderRadarDisc()
+        {
+            // Position: radarPosition set in RenderText when settingsButtonPosition is updated
+            if (radarPosition == Vector3.Zero) return;
+
+            // Draw disc as a ring of line segments (flat disc in XZ plane)
+            int segments = 32;
+            float angleStep = (float)(2.0 * Math.PI / segments);
+            for (int i = 0; i < segments; i++)
+            {
+                float a1 = i * angleStep;
+                float a2 = (i + 1) * angleStep;
+                Vector3 p1 = radarPosition + new Vector3((float)Math.Cos(a1) * RadarDiscRadius, 0, (float)Math.Sin(a1) * RadarDiscRadius);
+                Vector3 p2 = radarPosition + new Vector3((float)Math.Cos(a2) * RadarDiscRadius, 0, (float)Math.Sin(a2) * RadarDiscRadius);
+                DrawLine(p1, p2, new Vector4(0.0f, 1.0f, 1.0f, 1.0f), compassHeadingDegrees);
+            }
+
+            // Draw sweep line
+            Vector3 sweepEnd = radarPosition + new Vector3((float)Math.Cos(radarSweepAngle) * RadarDiscRadius, 0, (float)Math.Sin(radarSweepAngle) * RadarDiscRadius);
+            DrawLine(radarPosition, sweepEnd, new Vector4(0.0f, 1.0f, 1.0f, 0.6f), compassHeadingDegrees);
+        }
+
+        // Draw dotted lines from radar to each airplane, with distance labels
+        private void RenderRadarLines()
+        {
+            if (airplanes == null || airplanes.Count == 0) return;
+
+            foreach (var plane in airplanes)
+            {
+                var planePos = ComputeAirplanePosition(plane);
+                float dist = AirplaneMath.GreatCircleDistanceMeters(
+                    currentLatitude, currentLongitude,
+                    plane.Latitude ?? currentLatitude,
+                    plane.Longitude ?? currentLongitude);
+
+                string distText = dist < 1000f
+                    ? string.Format("{0:F0}m", dist)
+                    : string.Format("{0:F1}km", dist / 1000f);
+
+                // Draw dotted line (every 3rd segment)
+                int segments = 20;
+                for (int i = 0; i < segments; i++)
+                {
+                    if (i % 3 != 0) continue;
+                    float t1 = (float)i / segments;
+                    float t2 = (float)(i + 1) / segments;
+                    Vector3 p1 = radarPosition + (planePos - radarPosition) * t1;
+                    Vector3 p2 = radarPosition + (planePos - radarPosition) * t2;
+                    DrawLine(p1, p2, new Vector4(0.0f, 1.0f, 0.5f, 0.8f), compassHeadingDegrees);
+                }
+
+                // Distance label at midpoint
+                Vector3 midPos = radarPosition + (planePos - radarPosition) * 0.5f;
+                midPos.Y += 0.05f; // slight offset above line
+                DrawTextBillboard(distText, midPos, DebugTextSize * 0.9f, true, compassHeadingDegrees);
+            }
+        }
+
+        // Helper: draw a line between two points
+        private void DrawLine(Vector3 from, Vector3 to, Vector4 color, float compassHeadingDegrees)
+        {
+            // Compute direction and length
+            Vector3 diff = to - from;
+            float length = diff.Length();
+            if (length < 1e-6f) return;
+            Vector3 dir = diff / length;
+
+            // Build a small quad/line segment using the existing cube geometry
+            // Scale cube along its local Z axis to match length
+            float scale = length;
+            Matrix4x4 compassRot = Matrix4x4.CreateRotationY((float)(-compassHeadingDegrees * Math.PI / 180.0));
+            Vector3 localFrom = from - worldCenter;
+            Vector3 rotatedFrom = Vector3.Transform(localFrom, compassRot) + worldCenter;
+            Vector3 localDir = Vector3.Transform(dir, compassRot);
+            Vector3 rotatedTo = rotatedFrom + localDir * scale;
+
+            // Use cube at midpoint, scaled to length
+            Vector3 midPoint = (rotatedFrom + rotatedTo) * 0.5f;
+            Matrix4x4 m = Matrix4x4.CreateScale(0.01f, 0.01f, scale) * Matrix4x4.CreateTranslation(midPoint);
+            modelConstantBufferData.model = Matrix4x4.Transpose(m);
+            modelConstantBufferData.color = color;
+            deviceResources.D3DDeviceContext.UpdateSubresource(ref modelConstantBufferData, modelConstantBuffer);
+            deviceResources.D3DDeviceContext.DrawIndexedInstanced(indexCount, 2, 0, 0, 0);
         }
         public bool CheckSettingsHit(SpatialPointerPose headPose)
         {
