@@ -82,6 +82,7 @@ namespace HololensAirplaneViewer
         // Guard against stacking airplane info dialogs.
         private bool _infoDialogShowing = false;
         private bool _settingsDialogShowing = false;
+        private bool _northAlignmentInitialized;
 
         // Cache whether or not the HolographicCamera.Display property can be accessed.
         bool canGetHolographicDisplayForCamera = false;
@@ -254,11 +255,17 @@ namespace HololensAirplaneViewer
 
                 pointerPressed = false;
 
-                // Read the latest compass heading (updated on background thread by CompassService)
-                float compassHeading = compassService?.CurrentHeadingDegrees ?? 0f;
-
                 airplaneRenderer.PositionHologram(headPose);
-                airplaneRenderer.SetCompassHeading(compassHeading);
+                float headYaw;
+                if (!_northAlignmentInitialized
+                    && headPose != null
+                    && compassService != null
+                    && compassService.HasHeading
+                    && TryGetHorizontalHeadYaw(headPose, out headYaw))
+                {
+                    airplaneRenderer.SetWorldNorthHeading(headYaw - compassService.CalibratedHeading);
+                    _northAlignmentInitialized = true;
+                }
             }
 #endif
 
@@ -579,6 +586,7 @@ namespace HololensAirplaneViewer
             {
                 stationaryReferenceFrame = null;
             }
+            _northAlignmentInitialized = false;
 
 #if DRAW_SAMPLE_CONTENT
             // Propagate the stationary reference frame to the renderer
@@ -634,36 +642,68 @@ namespace HololensAirplaneViewer
                     manual ? "Manual location" : "Automatic (device) location",
                     LocationSettingsModel.FormatCoordinates(latitude, longitude));
 
-                bool showAdjust = hasFix;
                 int choice;
-                if (showAdjust)
-                {
-                    choice = await ShowChoiceDialogAsync(
-                        status,
-                        "Location Settings",
-                        "Pick a city",
-                        "Enter location",
-                        "Close");
-                }
-                else
-                {
-                    // No real fix yet - avoid presenting zero/stale coordinates for adjustment.
-                    string noFixStatus = "Waiting for device location. Choose a city or sample geohash to set an initial location.";
-                    choice = await ShowChoiceDialogAsync(
-                        noFixStatus,
-                        "Location Settings",
-                        "Pick a city",
-                        "Enter location",
-                        "Close");
-                }
+                string dialogStatus = hasFix
+                    ? status
+                    : "Waiting for device location. Choose a city or enter geohash to set an initial location.";
+                choice = await ShowChoiceDialogAsync(
+                    dialogStatus,
+                    "Location Settings",
+                    "Change location",
+                    "Set North",
+                    "Close");
 
                 if (choice == 0)
                 {
-                    await PickPresetLocationAsync();
+                    await RunLocationActionsAsync(latitude, longitude, hasFix);
                 }
                 else if (choice == 1)
                 {
-                    await EnterLocationMenuAsync(latitude, longitude, hasFix);
+                    SpatialPointerPose alignmentPose = stationaryReferenceFrame == null
+                        ? null
+                        : SpatialPointerPose.TryGetAtTimestamp(
+                            stationaryReferenceFrame.CoordinateSystem,
+                            Windows.Perception.PerceptionTimestampHelper.FromHistoricalTargetTime(DateTime.Now));
+                    if (alignmentPose == null)
+                    {
+                        await ShowChoiceDialogAsync(
+                            "The current head direction is unavailable. Try setting north again.",
+                            "Set North",
+                            "OK");
+                        continue;
+                    }
+
+                    float northAlignment;
+                    if (!TryGetHorizontalHeadYaw(alignmentPose, out northAlignment))
+                    {
+                        await ShowChoiceDialogAsync(
+                            "Look toward the horizon before setting north.",
+                            "Set North",
+                            "OK");
+                        continue;
+                    }
+
+                    if (compassService != null && compassService.HasHeading)
+                    {
+                        float magneticHeading = compassService.CurrentHeadingDegrees;
+                        compassService.SetCalibrationOffset(magneticHeading);
+                        await ShowChoiceDialogAsync(
+                            string.Format(
+                                "North aligned to your gaze. Magnetic correction saved: {0:F1}°.",
+                                magneticHeading),
+                            "Set North",
+                            "OK");
+                    }
+                    else
+                    {
+                        await ShowChoiceDialogAsync(
+                            "North aligned to your gaze for this session. A compass reading is unavailable, so no magnetic correction was saved.",
+                            "Set North",
+                            "OK");
+                    }
+                    airplaneRenderer.SetWorldNorthHeading(northAlignment);
+                    _northAlignmentInitialized = true;
+                    // Continue loop to allow further adjustments
                 }
                 else
                 {
@@ -679,6 +719,40 @@ namespace HololensAirplaneViewer
                 }
             }
         }
+
+        private static bool TryGetHorizontalHeadYaw(SpatialPointerPose pose, out float yawDegrees)
+        {
+            var forward = pose.Head.ForwardDirection;
+            double horizontalLength = Math.Sqrt(forward.X * forward.X + forward.Z * forward.Z);
+            if (horizontalLength < 0.1)
+            {
+                yawDegrees = 0f;
+                return false;
+            }
+
+            yawDegrees = (float)(Math.Atan2(forward.X, -forward.Z) * 180.0 / Math.PI);
+            return true;
+        }
+
+        private async Task RunLocationActionsAsync(double latitude, double longitude, bool hasFix)
+        {
+            int choice = await ShowChoiceDialogAsync(
+                "Choose how to set the location.",
+                "Location Options",
+                "Pick a city",
+                "Enter location",
+                "Back");
+
+            if (choice == 0)
+            {
+                await PickPresetLocationAsync();
+            }
+            else if (choice == 1)
+            {
+                await EnterLocationMenuAsync(latitude, longitude, hasFix);
+            }
+        }
+
         private async Task EnterLocationMenuAsync(double latitude, double longitude, bool hasFix)
         {
             if (!hasFix)

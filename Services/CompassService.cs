@@ -1,5 +1,6 @@
 using System;
 using Windows.Devices.Sensors;
+using Windows.Storage;
 
 namespace HololensAirplaneViewer.Services
 {
@@ -16,8 +17,21 @@ namespace HololensAirplaneViewer.Services
         /// <summary>Latest magnetic heading in degrees (0–360). 0 if compass unavailable.</summary>
         public float CurrentHeadingDegrees { get; private set; }
 
+        public bool HasHeading { get; private set; }
+
         /// <summary>Raised when the heading changes (on a background thread).</summary>
         public event EventHandler<float> HeadingChanged;
+
+        /// <summary>
+        /// Calibration offset in degrees (user set north).
+        /// Stored statically and loaded on Initialize.
+        /// </summary>
+        private static float _calibrationOffset = 0f;
+
+        /// <summary>
+        /// Returns heading adjusted by user calibration.
+        /// </summary>
+        public float CalibratedHeading => (CurrentHeadingDegrees - _calibrationOffset + 360f) % 360f;
 
         /// <summary>
         /// Initializes the compass sensor. No-op if the sensor is unavailable.
@@ -27,6 +41,7 @@ namespace HololensAirplaneViewer.Services
         {
             if (_disposed) return;
 
+            _calibrationOffset = CompassCalibrationStore.LoadOffset();
             _compass = Compass.GetDefault();
             if (_compass == null)
             {
@@ -40,6 +55,12 @@ namespace HololensAirplaneViewer.Services
             _compass.ReadingChanged += OnReadingChanged;
         }
 
+        public void SetCalibrationOffset(float offsetDegrees)
+        {
+            _calibrationOffset = (offsetDegrees % 360f + 360f) % 360f;
+            CompassCalibrationStore.SaveOffset(_calibrationOffset);
+        }
+
         private void OnReadingChanged(Compass sender, CompassReadingChangedEventArgs args)
         {
             CompassReading reading = args.Reading;
@@ -51,6 +72,7 @@ namespace HololensAirplaneViewer.Services
                 // Normalize to [0, 360)
                 heading = (heading + 360f) % 360f;
                 CurrentHeadingDegrees = heading;
+                HasHeading = true;
                 HeadingChanged?.Invoke(this, heading);
             }
         }

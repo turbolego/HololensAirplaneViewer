@@ -81,6 +81,7 @@
     <Compile Include="Services\AirplaneSelection.cs" />
     <Compile Include="Services\AirplaneService.cs" />
     <Compile Include="Services\CompassService.cs" />
+    <Compile Include="Services\CompassCalibrationStore.cs" />
     <Compile Include="Services\GeolocationService.cs" />
     <Compile Include="Services\LocationOverrideStore.cs" />
     <Compile Include="Services\LocationSettingsModel.cs" />
@@ -125,6 +126,7 @@
     <GeometryShader Include="Content\Shaders\GeometryShader.hlsl" />
     <GeometryShader Include="Content\Shaders\TextGeometryShader.hlsl" />
     <PixelShader Include="Content\Shaders\PixelShader.hlsl" />
+    <PixelShader Include="Content\Shaders\LinePixelShader.hlsl" />
     <PixelShader Include="Content\Shaders\TextPixelShader.hlsl" />
     <None Include="Content\Shaders\VertexShaderShared.hlsl" />
     <None Include="Content\Shaders\TextVertexShaderShared.hlsl" />

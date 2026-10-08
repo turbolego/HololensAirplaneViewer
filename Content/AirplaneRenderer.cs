@@ -25,6 +25,9 @@ namespace HololensAirplaneViewer.Content
         private SharpDX.Direct3D11.VertexShader vertexShader;
         private SharpDX.Direct3D11.GeometryShader geometryShader;
         private SharpDX.Direct3D11.PixelShader pixelShader;
+        private SharpDX.Direct3D11.PixelShader linePixelShader;
+        private SharpDX.Direct3D11.BlendState lineBlendState;
+        private SharpDX.Direct3D11.DepthStencilState radarDepthStencilState;
         private SharpDX.Direct3D11.Buffer modelConstantBuffer;
 
         private SharpDX.Direct3D11.InputLayout textInputLayout;
@@ -55,8 +58,7 @@ namespace HololensAirplaneViewer.Content
         private float ceilingY;
 
         /// <summary>
-        /// Latest compass heading in degrees (0=North, 90=East, 180=South, 270=West).
-        /// Updated on a background thread by CompassService; read on the render thread.
+        /// World-space yaw of north in degrees (0=North along -Z, 90=East along +X).
         /// </summary>
         private float compassHeadingDegrees;
 
@@ -66,6 +68,12 @@ namespace HololensAirplaneViewer.Content
         
         private Vector3 settingsButtonPosition = Vector3.Zero;
         private float settingsButtonRadius = 0.2f;
+
+        // Radar hologram: disc above the settings button
+        private Vector3 radarPosition = Vector3.Zero;
+        private const float RadarHeightAboveSettings = 0.35f; // meters above SETTINGS text
+        private const float RadarDiscRadius = 0.4f;
+        private float radarSweepAngle = 0f; // animated sweep line angle
 
         private SpatialStationaryFrameOfReference stationaryReferenceFrame;
 
@@ -167,6 +175,8 @@ namespace HololensAirplaneViewer.Content
 
         public async void Update(StepTimer timer)
         {
+            UpdateRadarSweep((float)timer.ElapsedSeconds);
+
             double requestedLatitude;
             double requestedLongitude;
             bool requestedManualLocation = LocationOverrideStore.TryGet(
@@ -309,10 +319,25 @@ namespace HololensAirplaneViewer.Content
             RenderCursor();
             RenderAirplanes();
             RenderText();
+            RenderFloorCompass();
+            RenderRadarLabels();
+
+            var context = deviceResources.D3DDeviceContext;
+            context.OutputMerger.SetDepthStencilState(radarDepthStencilState, 0);
+            try
+            {
+                RenderRadarDisc();
+                RenderRadarLines();
+            }
+            finally
+            {
+                context.OutputMerger.SetDepthStencilState(null, 0);
+            }
         }
 
         private void RenderCursor()
         {
+            BindCubePipeline();
             Vector3 cursorPosition = currentHeadPosition + currentHeadDirection * 2.0f; // 2 meters in front
             
             // Draw a small dot as the cursor
@@ -326,27 +351,21 @@ namespace HololensAirplaneViewer.Content
         /// <summary>
         /// Set by the main loop each frame from the compass service.
         /// </summary>
-        public void SetCompassHeading(float degrees)
+        public void SetWorldNorthHeading(float degrees)
         {
-            compassHeadingDegrees = degrees;
+            compassHeadingDegrees = NormalizeDegrees(degrees);
+        }
+
+        // Update radar sweep animation angle
+        public void UpdateRadarSweep(float deltaSeconds)
+        {
+            radarSweepAngle += deltaSeconds * 1.5f; // sweep speed (rad/s)
+            if (radarSweepAngle > 6.2832f) radarSweepAngle -= 6.2832f;
         }
 
         private void RenderAirplanes()
         {
-            var context = deviceResources.D3DDeviceContext;
-
-            context.InputAssembler.InputLayout = inputLayout;
-            context.InputAssembler.PrimitiveTopology = SharpDX.Direct3D.PrimitiveTopology.TriangleList;
-            context.InputAssembler.SetVertexBuffers(0, new SharpDX.Direct3D11.VertexBufferBinding(vertexBuffer, SharpDX.Utilities.SizeOf<VertexPositionColor>(), 0));
-            context.InputAssembler.SetIndexBuffer(indexBuffer, SharpDX.DXGI.Format.R16_UInt, 0);
-
-            context.VertexShader.SetShader(vertexShader, null, 0);
-            context.VertexShader.SetConstantBuffers(0, modelConstantBuffer);
-            if (!usingVprtShaders)
-            {
-                context.GeometryShader.SetShader(geometryShader, null, 0);
-            }
-            context.PixelShader.SetShader(pixelShader, null, 0);
+            BindCubePipeline();
 
             foreach (var plane in airplanes)
             {
@@ -363,23 +382,8 @@ namespace HololensAirplaneViewer.Content
 
         private void RenderText()
         {
+            BindTextPipeline();
             var context = deviceResources.D3DDeviceContext;
-
-            context.InputAssembler.InputLayout = textInputLayout;
-            context.InputAssembler.PrimitiveTopology = SharpDX.Direct3D.PrimitiveTopology.TriangleList;
-            context.InputAssembler.SetVertexBuffers(0, new SharpDX.Direct3D11.VertexBufferBinding(textVertexBuffer, SharpDX.Utilities.SizeOf<TextVertex>(), 0));
-            context.InputAssembler.SetIndexBuffer(textIndexBuffer, SharpDX.DXGI.Format.R16_UInt, 0);
-
-            context.VertexShader.SetShader(textVertexShader, null, 0);
-            context.VertexShader.SetConstantBuffers(0, modelConstantBuffer);
-            if (!usingVprtShaders)
-            {
-                context.GeometryShader.SetShader(textGeometryShader, null, 0);
-            }
-            context.PixelShader.SetShader(textPixelShader, null, 0);
-            context.PixelShader.SetConstantBuffers(0, modelConstantBuffer);
-            context.PixelShader.SetShaderResource(0, glyphAtlasSrv);
-            context.PixelShader.SetSampler(0, textSampler);
 
             foreach (var plane in airplanes)
             {
@@ -390,6 +394,9 @@ namespace HololensAirplaneViewer.Content
             // Update hover state
             SpatialPointerPose headPose = SpatialPointerPose.TryGetAtTimestamp(stationaryReferenceFrame.CoordinateSystem, Windows.Perception.PerceptionTimestampHelper.FromHistoricalTargetTime(DateTime.Now));
             UpdateHoverState(CheckSettingsHit(headPose));
+
+            // Update radar position (above settings button)
+            radarPosition = settingsButtonPosition + new Vector3(0.0f, RadarHeightAboveSettings, 0.0f);
 
             Vector3 panelCenter = worldCenter + new Vector3(0.0f, 0.15f, -1.15f);
             var lines = new List<string>();
@@ -483,6 +490,8 @@ namespace HololensAirplaneViewer.Content
             {
                 return;
             }
+
+            BindTextPipeline();
 
             // Default color: Amber/Yellow (1.0, 0.75, 0.2)
             Vector4 textColor = (color == default) ? new Vector4(1.0f, 0.75f, 0.2f, 1.0f) : color;
@@ -663,6 +672,28 @@ namespace HololensAirplaneViewer.Content
             }
             var psBytes = await DirectXHelper.ReadDataAsync(await folder.GetFileAsync("Content\\Shaders\\PixelShader.cso"));
             pixelShader = ToDispose(new SharpDX.Direct3D11.PixelShader(deviceResources.D3DDevice, psBytes));
+            var linePsBytes = await DirectXHelper.ReadDataAsync(await folder.GetFileAsync("Content\\Shaders\\LinePixelShader.cso"));
+            linePixelShader = ToDispose(new SharpDX.Direct3D11.PixelShader(deviceResources.D3DDevice, linePsBytes));
+
+            var blendDescription = new SharpDX.Direct3D11.BlendStateDescription();
+            blendDescription.RenderTarget[0].IsBlendEnabled = true;
+            blendDescription.RenderTarget[0].SourceBlend = SharpDX.Direct3D11.BlendOption.SourceAlpha;
+            blendDescription.RenderTarget[0].DestinationBlend = SharpDX.Direct3D11.BlendOption.InverseSourceAlpha;
+            blendDescription.RenderTarget[0].BlendOperation = SharpDX.Direct3D11.BlendOperation.Add;
+            blendDescription.RenderTarget[0].SourceAlphaBlend = SharpDX.Direct3D11.BlendOption.One;
+            blendDescription.RenderTarget[0].DestinationAlphaBlend = SharpDX.Direct3D11.BlendOption.InverseSourceAlpha;
+            blendDescription.RenderTarget[0].AlphaBlendOperation = SharpDX.Direct3D11.BlendOperation.Add;
+            blendDescription.RenderTarget[0].RenderTargetWriteMask = SharpDX.Direct3D11.ColorWriteMaskFlags.All;
+            lineBlendState = ToDispose(new SharpDX.Direct3D11.BlendState(deviceResources.D3DDevice, blendDescription));
+
+            var depthStencilDescription = new SharpDX.Direct3D11.DepthStencilStateDescription
+            {
+                IsDepthEnabled = true,
+                DepthWriteMask = SharpDX.Direct3D11.DepthWriteMask.Zero,
+                DepthComparison = SharpDX.Direct3D11.Comparison.LessEqual,
+                IsStencilEnabled = false
+            };
+            radarDepthStencilState = ToDispose(new SharpDX.Direct3D11.DepthStencilState(deviceResources.D3DDevice, depthStencilDescription));
 
             // Text shaders
             var tvsFile = usingVprtShaders ? "Content\\Shaders\\TextVPRTVertexShader.cso" : "Content\\Shaders\\TextVertexShader.cso";
@@ -748,6 +779,9 @@ namespace HololensAirplaneViewer.Content
             DisposeAndNull(ref vertexShader);
             DisposeAndNull(ref geometryShader);
             DisposeAndNull(ref pixelShader);
+            DisposeAndNull(ref linePixelShader);
+            DisposeAndNull(ref lineBlendState);
+            DisposeAndNull(ref radarDepthStencilState);
             DisposeAndNull(ref modelConstantBuffer);
 
             DisposeAndNull(ref textInputLayout);
@@ -772,6 +806,11 @@ namespace HololensAirplaneViewer.Content
             while (a > Math.PI) a -= (float)(2.0 * Math.PI);
             while (a < -Math.PI) a += (float)(2.0 * Math.PI);
             return a;
+        }
+
+        private static float NormalizeDegrees(float degrees)
+        {
+            return (degrees % 360f + 360f) % 360f;
         }
 
         /// <summary>
@@ -807,6 +846,27 @@ namespace HololensAirplaneViewer.Content
             }
         }
 
+        // Render a flat floor compass with N/E/S/W arrows
+        private void RenderFloorCompass()
+        {
+            BindTextPipeline();
+
+            // Position slightly below the user's eye level (floor)
+            float floorY = worldCenter.Y - 0.5f; // half meter below
+            float radius = 0.8f; // meters from center
+
+            // Directions relative to worldCenter, rotated by current heading
+            // Use simple text arrows; they will appear as billboards facing the user.
+            // N
+            DrawTextBillboard("N", new Vector3(worldCenter.X, floorY, worldCenter.Z - radius), DebugTextSize, true, compassHeadingDegrees);
+            // E
+            DrawTextBillboard("E", new Vector3(worldCenter.X + radius, floorY, worldCenter.Z), DebugTextSize, true, compassHeadingDegrees);
+            // S
+            DrawTextBillboard("S", new Vector3(worldCenter.X, floorY, worldCenter.Z + radius), DebugTextSize, true, compassHeadingDegrees);
+            // W
+            DrawTextBillboard("W", new Vector3(worldCenter.X - radius, floorY, worldCenter.Z), DebugTextSize, true, compassHeadingDegrees);
+        }
+
         private struct TextVertex
         {
             public Vector3 Pos;
@@ -822,6 +882,159 @@ namespace HololensAirplaneViewer.Content
         {
             public Matrix4x4 model;
             public Vector4 color;
+        }
+
+        // Render a disc hologram above the SETTINGS text, with rotating sweep line
+        private void RenderRadarDisc()
+        {
+            // Position: radarPosition set in RenderText when settingsButtonPosition is updated
+            if (radarPosition == Vector3.Zero) return;
+
+            BindLinePipeline();
+
+            // Draw disc as a ring of line segments (flat disc in XZ plane)
+            int segments = 32;
+            float angleStep = (float)(2.0 * Math.PI / segments);
+            for (int i = 0; i < segments; i++)
+            {
+                float a1 = i * angleStep;
+                float a2 = (i + 1) * angleStep;
+                Vector3 p1 = radarPosition + new Vector3((float)Math.Cos(a1) * RadarDiscRadius, 0, (float)Math.Sin(a1) * RadarDiscRadius);
+                Vector3 p2 = radarPosition + new Vector3((float)Math.Cos(a2) * RadarDiscRadius, 0, (float)Math.Sin(a2) * RadarDiscRadius);
+                DrawLine(p1, p2, new Vector4(0.0f, 1.0f, 1.0f, 1.0f), compassHeadingDegrees);
+            }
+
+            // Draw sweep line
+            Vector3 sweepEnd = radarPosition + new Vector3((float)Math.Cos(radarSweepAngle) * RadarDiscRadius, 0, (float)Math.Sin(radarSweepAngle) * RadarDiscRadius);
+            DrawLine(radarPosition, sweepEnd, new Vector4(0.0f, 1.0f, 1.0f, 0.6f), compassHeadingDegrees);
+        }
+
+        // Draw dotted lines from radar to each airplane, with distance labels
+        private void RenderRadarLines()
+        {
+            if (airplanes == null || airplanes.Count == 0) return;
+
+            foreach (var plane in airplanes)
+            {
+                var planePos = ComputeAirplanePosition(plane);
+                // Draw dotted line (every 3rd segment)
+                int segments = 20;
+                for (int i = 0; i < segments; i++)
+                {
+                    if (i % 3 != 0) continue;
+                    float t1 = (float)i / segments;
+                    float t2 = (float)(i + 1) / segments;
+                    Vector3 p1 = radarPosition + (planePos - radarPosition) * t1;
+                    Vector3 p2 = radarPosition + (planePos - radarPosition) * t2;
+                    DrawLine(p1, p2, new Vector4(0.0f, 1.0f, 0.5f, 0.8f), compassHeadingDegrees);
+                }
+
+            }
+        }
+
+        private void RenderRadarLabels()
+        {
+            if (airplanes == null || airplanes.Count == 0) return;
+
+            foreach (var plane in airplanes)
+            {
+                var planePos = ComputeAirplanePosition(plane);
+                double dist = AirplaneMath.GreatCircleDistanceMeters(
+                    currentLatitude, currentLongitude,
+                    plane.Latitude ?? currentLatitude,
+                    plane.Longitude ?? currentLongitude);
+                string distText = dist < 1000.0
+                    ? string.Format("{0:F0}m", dist)
+                    : string.Format("{0:F1}km", dist / 1000.0);
+
+                Vector3 midPos = radarPosition + (planePos - radarPosition) * 0.5f;
+                midPos.Y += 0.05f;
+                DrawTextBillboard(distText, midPos, DebugTextSize * 0.9f, true, compassHeadingDegrees);
+            }
+        }
+
+        // Helper: draw a line between two points
+        private void DrawLine(Vector3 from, Vector3 to, Vector4 color, float compassHeadingDegrees)
+        {
+            // Compute direction and length
+            Vector3 diff = to - from;
+            float length = diff.Length();
+            if (length < 1e-6f) return;
+            Vector3 dir = diff / length;
+
+            // Build a small quad/line segment using the existing cube geometry
+            // Scale cube along its local Z axis to match length
+            float scale = length;
+            Matrix4x4 compassRot = Matrix4x4.CreateRotationY((float)(-compassHeadingDegrees * Math.PI / 180.0));
+            Vector3 localFrom = from - worldCenter;
+            Vector3 rotatedFrom = Vector3.Transform(localFrom, compassRot) + worldCenter;
+            Vector3 localDir = Vector3.Transform(dir, compassRot);
+            Vector3 rotatedTo = rotatedFrom + localDir * scale;
+
+            // Use cube at midpoint, scaled to length
+            Vector3 midPoint = (rotatedFrom + rotatedTo) * 0.5f;
+            Vector3 referenceUp = Math.Abs(localDir.Y) > 0.99f ? Vector3.UnitX : Vector3.UnitY;
+            Vector3 right = Vector3.Normalize(Vector3.Cross(referenceUp, localDir));
+            Vector3 up = Vector3.Cross(localDir, right);
+            Matrix4x4 orientation = new Matrix4x4(
+                right.X, right.Y, right.Z, 0f,
+                up.X, up.Y, up.Z, 0f,
+                localDir.X, localDir.Y, localDir.Z, 0f,
+                0f, 0f, 0f, 1f);
+            const float cubeExtent = 0.06f;
+            Matrix4x4 m = Matrix4x4.CreateScale(0.01f / cubeExtent, 0.01f / cubeExtent, scale / cubeExtent)
+                * orientation * Matrix4x4.CreateTranslation(midPoint);
+            BindLinePipeline();
+            modelConstantBufferData.model = Matrix4x4.Transpose(m);
+            modelConstantBufferData.color = color;
+            deviceResources.D3DDeviceContext.UpdateSubresource(ref modelConstantBufferData, modelConstantBuffer);
+            deviceResources.D3DDeviceContext.DrawIndexedInstanced(indexCount, 2, 0, 0, 0);
+        }
+
+        private void BindCubePipeline()
+        {
+            var context = deviceResources.D3DDeviceContext;
+            context.OutputMerger.SetBlendState(null);
+            context.InputAssembler.InputLayout = inputLayout;
+            context.InputAssembler.PrimitiveTopology = SharpDX.Direct3D.PrimitiveTopology.TriangleList;
+            context.InputAssembler.SetVertexBuffers(0, new SharpDX.Direct3D11.VertexBufferBinding(vertexBuffer, SharpDX.Utilities.SizeOf<VertexPositionColor>(), 0));
+            context.InputAssembler.SetIndexBuffer(indexBuffer, SharpDX.DXGI.Format.R16_UInt, 0);
+            context.VertexShader.SetShader(vertexShader, null, 0);
+            context.VertexShader.SetConstantBuffers(0, modelConstantBuffer);
+            if (!usingVprtShaders)
+            {
+                context.GeometryShader.SetShader(geometryShader, null, 0);
+            }
+            context.PixelShader.SetShader(pixelShader, null, 0);
+        }
+
+        private void BindLinePipeline()
+        {
+            BindCubePipeline();
+            var context = deviceResources.D3DDeviceContext;
+            context.PixelShader.SetShader(linePixelShader, null, 0);
+            context.PixelShader.SetConstantBuffers(0, modelConstantBuffer);
+            context.OutputMerger.SetBlendState(lineBlendState);
+        }
+
+        private void BindTextPipeline()
+        {
+            var context = deviceResources.D3DDeviceContext;
+            context.OutputMerger.SetBlendState(null);
+            context.InputAssembler.InputLayout = textInputLayout;
+            context.InputAssembler.PrimitiveTopology = SharpDX.Direct3D.PrimitiveTopology.TriangleList;
+            context.InputAssembler.SetVertexBuffers(0, new SharpDX.Direct3D11.VertexBufferBinding(textVertexBuffer, SharpDX.Utilities.SizeOf<TextVertex>(), 0));
+            context.InputAssembler.SetIndexBuffer(textIndexBuffer, SharpDX.DXGI.Format.R16_UInt, 0);
+            context.VertexShader.SetShader(textVertexShader, null, 0);
+            context.VertexShader.SetConstantBuffers(0, modelConstantBuffer);
+            if (!usingVprtShaders)
+            {
+                context.GeometryShader.SetShader(textGeometryShader, null, 0);
+            }
+            context.PixelShader.SetShader(textPixelShader, null, 0);
+            context.PixelShader.SetConstantBuffers(0, modelConstantBuffer);
+            context.PixelShader.SetShaderResource(0, glyphAtlasSrv);
+            context.PixelShader.SetSampler(0, textSampler);
         }
         public bool CheckSettingsHit(SpatialPointerPose headPose)
         {
