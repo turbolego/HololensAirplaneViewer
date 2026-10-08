@@ -941,7 +941,17 @@ namespace HololensAirplaneViewer.Content
 
             // Use cube at midpoint, scaled to length
             Vector3 midPoint = (rotatedFrom + rotatedTo) * 0.5f;
-            Matrix4x4 m = Matrix4x4.CreateScale(0.01f, 0.01f, scale) * Matrix4x4.CreateTranslation(midPoint);
+            Vector3 referenceUp = Math.Abs(localDir.Y) > 0.99f ? Vector3.UnitX : Vector3.UnitY;
+            Vector3 right = Vector3.Normalize(Vector3.Cross(referenceUp, localDir));
+            Vector3 up = Vector3.Cross(localDir, right);
+            Matrix4x4 orientation = new Matrix4x4(
+                right.X, right.Y, right.Z, 0f,
+                up.X, up.Y, up.Z, 0f,
+                localDir.X, localDir.Y, localDir.Z, 0f,
+                0f, 0f, 0f, 1f);
+            const float cubeExtent = 0.06f;
+            Matrix4x4 m = Matrix4x4.CreateScale(0.01f / cubeExtent, 0.01f / cubeExtent, scale / cubeExtent)
+                * orientation * Matrix4x4.CreateTranslation(midPoint);
             modelConstantBufferData.model = Matrix4x4.Transpose(m);
             modelConstantBufferData.color = color;
             deviceResources.D3DDeviceContext.UpdateSubresource(ref modelConstantBufferData, modelConstantBuffer);
