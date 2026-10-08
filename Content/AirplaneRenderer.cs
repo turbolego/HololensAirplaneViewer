@@ -836,13 +836,13 @@ namespace HololensAirplaneViewer.Content
             // Directions relative to worldCenter, rotated by current heading
             // Use simple text arrows; they will appear as billboards facing the user.
             // N
-            DrawTextBillboard("N", new Vector3(worldCenter.X, floorY, worldCenter.Z - radius), DebugTextSize, false, compassHeadingDegrees);
+            DrawTextBillboard("N", new Vector3(worldCenter.X, floorY, worldCenter.Z - radius), DebugTextSize, true, compassHeadingDegrees);
             // E
-            DrawTextBillboard("E", new Vector3(worldCenter.X + radius, floorY, worldCenter.Z), DebugTextSize, false, compassHeadingDegrees);
+            DrawTextBillboard("E", new Vector3(worldCenter.X + radius, floorY, worldCenter.Z), DebugTextSize, true, compassHeadingDegrees);
             // S
-            DrawTextBillboard("S", new Vector3(worldCenter.X, floorY, worldCenter.Z + radius), DebugTextSize, false, compassHeadingDegrees);
+            DrawTextBillboard("S", new Vector3(worldCenter.X, floorY, worldCenter.Z + radius), DebugTextSize, true, compassHeadingDegrees);
             // W
-            DrawTextBillboard("W", new Vector3(worldCenter.X - radius, floorY, worldCenter.Z), DebugTextSize, false, compassHeadingDegrees);
+            DrawTextBillboard("W", new Vector3(worldCenter.X - radius, floorY, worldCenter.Z), DebugTextSize, true, compassHeadingDegrees);
         }
 
         private struct TextVertex
