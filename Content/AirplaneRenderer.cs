@@ -306,6 +306,7 @@ namespace HololensAirplaneViewer.Content
                 return;
             }
 
+            RenderFloorCompass();
             RenderCursor();
             RenderAirplanes();
             RenderText();
@@ -805,6 +806,25 @@ namespace HololensAirplaneViewer.Content
             {
                 U0 = u0; V0 = v0; U1 = u1; V1 = v1;
             }
+        }
+
+        // Render a flat floor compass with N/E/S/W arrows
+        private void RenderFloorCompass()
+        {
+            // Position slightly below the user's eye level (floor)
+            float floorY = worldCenter.Y - 0.5f; // half meter below
+            float radius = 0.8f; // meters from center
+
+            // Directions relative to worldCenter, rotated by current heading
+            // Use simple text arrows; they will appear as billboards facing the user.
+            // N
+            DrawTextBillboard("N", new Vector3(worldCenter.X, floorY, worldCenter.Z - radius), DebugTextSize, false, compassHeadingDegrees);
+            // E
+            DrawTextBillboard("E", new Vector3(worldCenter.X + radius, floorY, worldCenter.Z), DebugTextSize, false, compassHeadingDegrees);
+            // S
+            DrawTextBillboard("S", new Vector3(worldCenter.X, floorY, worldCenter.Z + radius), DebugTextSize, false, compassHeadingDegrees);
+            // W
+            DrawTextBillboard("W", new Vector3(worldCenter.X - radius, floorY, worldCenter.Z), DebugTextSize, false, compassHeadingDegrees);
         }
 
         private struct TextVertex
