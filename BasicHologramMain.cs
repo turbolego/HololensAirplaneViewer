@@ -617,73 +617,74 @@ namespace HololensAirplaneViewer
         /// </summary>
         private async Task RunLocationSettingsAsync()
         {
-        double latitude;
-        double longitude;
-        bool manual = LocationOverrideStore.TryGet(out latitude, out longitude);
-        bool hasFix = manual || airplaneRenderer.HasObserverFix;
-        if (!manual)
-        {
-            latitude = airplaneRenderer.CurrentLatitude;
-            longitude = airplaneRenderer.CurrentLongitude;
-        }
-
-        while (true)
-        {
-            string status = string.Format(
-                "{0}\n{1}",
-                manual ? "Manual location" : "Automatic (device) location",
-                LocationSettingsModel.FormatCoordinates(latitude, longitude));
-
-            bool showAdjust = hasFix;
-            int choice;
-            if (showAdjust)
-            {
-                choice = await ShowChoiceDialogAsync(
-                    status,
-                    "Location Settings",
-                    "Pick a city",
-                    "Enter location",
-                    "Set North",
-                    "Close");
-            }
-            else
-            {
-                string noFixStatus = "Waiting for device location. Choose a city or enter geohash to set an initial location.";
-                choice = await ShowChoiceDialogAsync(
-                    noFixStatus,
-                    "Location Settings",
-                    "Pick a city",
-                    "Enter location",
-                    "Close");
-            }
-
-            if (choice == 0)
-            {
-                await PickPresetLocationAsync();
-            }
-            else if (choice == 1)
-            {
-                await EnterLocationMenuAsync(latitude, longitude, hasFix);
-            }
-            else if (choice == 2 && showAdjust)
-            {
-                // Set North calibration using current compass heading
-                float heading = compassService?.CurrentHeadingDegrees ?? 0f;
-                CompassCalibrationStore.SaveOffset(heading);
-                await ShowChoiceDialogAsync($"North set. Heading saved: {heading:F1}°", "Set North", "OK");
-                // Continue loop to allow further adjustments
-            }
-            else
-            {
-                return;
-            }
-
-            manual = LocationOverrideStore.TryGet(out latitude, out longitude);
-            hasFix = manual || airplaneRenderer.HasObserverFix;
+            double latitude;
+            double longitude;
+            bool manual = LocationOverrideStore.TryGet(out latitude, out longitude);
+            bool hasFix = manual || airplaneRenderer.HasObserverFix;
             if (!manual)
             {
                 latitude = airplaneRenderer.CurrentLatitude;
                 longitude = airplaneRenderer.CurrentLongitude;
+            }
+
+            while (true)
+            {
+                string status = string.Format(
+                    "{0}\n{1}",
+                    manual ? "Manual location" : "Automatic (device) location",
+                    LocationSettingsModel.FormatCoordinates(latitude, longitude));
+
+                bool showAdjust = hasFix;
+                int choice;
+                if (showAdjust)
+                {
+                    choice = await ShowChoiceDialogAsync(
+                        status,
+                        "Location Settings",
+                        "Pick a city",
+                        "Enter location",
+                        "Set North",
+                        "Close");
+                }
+                else
+                {
+                    string noFixStatus = "Waiting for device location. Choose a city or enter geohash to set an initial location.";
+                    choice = await ShowChoiceDialogAsync(
+                        noFixStatus,
+                        "Location Settings",
+                        "Pick a city",
+                        "Enter location",
+                        "Close");
+                }
+
+                if (choice == 0)
+                {
+                    await PickPresetLocationAsync();
+                }
+                else if (choice == 1)
+                {
+                    await EnterLocationMenuAsync(latitude, longitude, hasFix);
+                }
+                else if (choice == 2 && showAdjust)
+                {
+                    // Set North calibration using current compass heading
+                    float heading = compassService?.CurrentHeadingDegrees ?? 0f;
+                    CompassCalibrationStore.SaveOffset(heading);
+                    await ShowChoiceDialogAsync($"North set. Heading saved: {heading:F1}°", "Set North", "OK");
+                    // Continue loop to allow further adjustments
+                }
+                else
+                {
+                    return;
+                }
+
+                manual = LocationOverrideStore.TryGet(out latitude, out longitude);
+                hasFix = manual || airplaneRenderer.HasObserverFix;
+                if (!manual)
+                {
+                    latitude = airplaneRenderer.CurrentLatitude;
+                    longitude = airplaneRenderer.CurrentLongitude;
+                }
             }
         }
 
