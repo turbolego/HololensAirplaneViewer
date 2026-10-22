@@ -113,26 +113,8 @@ namespace HololensAirplaneViewer.Content
 
         private const int AtlasCols = 16;
         private const int AtlasRows = 8;
-        private const int GlyphCellW = 16;
-        private const int GlyphCellH = 24;
-
-        private static readonly Dictionary<char, ushort> GlyphBits = new Dictionary<char, ushort>
-        {
-            {'A', 0b_010_101_111_101_101}, {'B', 0b_110_101_110_101_110}, {'C', 0b_011_100_100_100_011},
-            {'D', 0b_110_101_101_101_110}, {'E', 0b_111_100_110_100_111}, {'F', 0b_111_100_110_100_100},
-            {'G', 0b_011_100_101_101_011}, {'H', 0b_101_101_111_101_101}, {'I', 0b_111_010_010_010_111},
-            {'J', 0b_001_001_001_101_010}, {'K', 0b_101_101_110_101_101}, {'L', 0b_100_100_100_100_111},
-            {'M', 0b_101_111_101_101_101}, {'N', 0b_101_111_111_111_101}, {'O', 0b_010_101_101_101_010},
-            {'P', 0b_110_101_110_100_100}, {'Q', 0b_010_101_101_111_011}, {'R', 0b_110_101_110_110_101},
-            {'S', 0b_011_100_010_001_110}, {'T', 0b_111_010_010_010_010}, {'U', 0b_101_101_101_101_111},
-            {'V', 0b_101_101_101_101_010}, {'W', 0b_101_101_111_111_101}, {'X', 0b_101_101_010_101_101},
-            {'Y', 0b_101_101_010_010_010}, {'Z', 0b_111_001_010_100_111}, {'0', 0b_111_101_101_101_111},
-            {'1', 0b_010_110_010_010_111}, {'2', 0b_111_001_111_100_111}, {'3', 0b_111_001_111_001_111},
-            {'4', 0b_101_101_111_001_001}, {'5', 0b_111_100_111_001_111}, {'6', 0b_111_100_111_101_111},
-            {'7', 0b_111_001_010_010_010}, {'8', 0b_111_101_111_101_111}, {'9', 0b_111_101_111_001_111},
-            {'-', 0b_000_000_111_000_000}, {'_', 0b_000_000_000_000_111}, {'.', 0b_000_000_000_000_010},
-            {':', 0b_000_010_000_010_000}, {',', 0b_000_000_000_010_100}, {' ', 0}
-        };
+        private const int GlyphCellW = BitmapGlyphFont.AtlasCellWidth;
+        private const int GlyphCellH = BitmapGlyphFont.AtlasCellHeight;
 
         public AirplaneRenderer(DeviceResources deviceResources)
         {
@@ -593,25 +575,18 @@ namespace HololensAirplaneViewer.Content
                 int gx = (idx % AtlasCols) * GlyphCellW;
                 int gy = (idx / AtlasCols) * GlyphCellH;
 
-                ushort bits;
-                if (!GlyphBits.TryGetValue(c, out bits))
+                var glyphRows = BitmapGlyphFont.GetRows(c);
+                for (int r = 0; r < BitmapGlyphFont.GlyphHeight; r++)
                 {
-                    bits = 0;
-                }
-
-                for (int r = 0; r < 5; r++)
-                {
-                    for (int cc = 0; cc < 3; cc++)
+                    for (int cc = 0; cc < BitmapGlyphFont.GlyphWidth; cc++)
                     {
-                        int bitIdx = r * 3 + cc;
-                        bool on = ((bits >> (14 - bitIdx)) & 1) == 1;
-                        if (!on) continue;
+                        if (glyphRows[r][cc] != '#') continue;
 
-                        int px0 = gx + 2 + cc * 4;
-                        int py0 = gy + 3 + r * 4;
-                        for (int yy = 0; yy < 3; yy++)
+                        int px0 = gx + BitmapGlyphFont.AtlasPaddingLeft + cc * BitmapGlyphFont.AtlasPixelScale;
+                        int py0 = gy + BitmapGlyphFont.AtlasPaddingTop + r * BitmapGlyphFont.AtlasPixelScale;
+                        for (int yy = 0; yy < BitmapGlyphFont.AtlasPixelScale; yy++)
                         {
-                            for (int xx = 0; xx < 3; xx++)
+                            for (int xx = 0; xx < BitmapGlyphFont.AtlasPixelScale; xx++)
                             {
                                 int px = px0 + xx;
                                 int py = py0 + yy;

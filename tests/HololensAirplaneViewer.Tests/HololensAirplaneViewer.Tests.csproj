@@ -25,6 +25,7 @@
   -->
   <ItemGroup>
     <Compile Include="..\..\Services\AirplaneMath.cs" Link="AirplaneMath.cs" />
+    <Compile Include="..\..\Services\BitmapGlyphFont.cs" Link="BitmapGlyphFont.cs" />
     <Compile Include="..\..\Services\AirplaneSelection.cs" Link="AirplaneSelection.cs" />
     <Compile Include="..\..\Models\AirplaneState.cs" Link="AirplaneState.cs" />
     <Compile Include="..\..\Utilities\GeohashConverter.cs" Link="GeohashConverter.cs" />
